@@ -8,9 +8,11 @@
     "scheme": "expico",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.ajinkyabiradar.expico"
     },
     "android": {
+      "package": "com.ajinkyabiradar.expico",
       "adaptiveIcon": {
         "backgroundColor": "#D5ECFC",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -50,6 +52,19 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "expo-navigation-bar": {
+        "hidden": true
+      },
+      "eas": {
+        "projectId": "2f5b5b67-8d2d-4517-8e93-856566baf942"
+      }
     }
   }
 }
