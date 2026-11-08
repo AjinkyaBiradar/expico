@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { Bank, Check, CreditCard, Money, PiggyBank } from 'phosphor-react-native';
+import { Check } from 'phosphor-react-native';
 import React, { useState } from 'react';
 import {
   Alert,
@@ -13,35 +13,18 @@ import {
   View,
 } from 'react-native';
 
+import { CategoryIcon } from '@/components/CategoryIcon';
 import { Colors } from '@/constants/colors';
 import { addWallet } from '@/db/queries';
+import { generateUUID } from '@/utils/formatters';
 import { fontScale, moderateScale, Radius, Spacing } from '@/utils/styling';
 
-import { type Icon } from 'phosphor-react-native';
-
-export interface WalletIconOption {
-  id: string;
-  label: string;
-  Icon: Icon;
-}
-
-export const WALLET_ICONS: WalletIconOption[] = [
-  { id: 'Cash', label: 'Cash', Icon: Money },
-  { id: 'Bank', label: 'Bank', Icon: Bank },
-  { id: 'CreditCard', label: 'Credit Card', Icon: CreditCard },
-  { id: 'PiggyBank', label: 'Piggy Bank', Icon: PiggyBank },
+export const WALLET_ICONS = [
+  { id: 'Cash', label: 'Cash', icon: 'Money' },
+  { id: 'Bank', label: 'Bank', icon: 'Bank' },
+  { id: 'CreditCard', label: 'Credit Card', icon: 'CreditCard' },
+  { id: 'PiggyBank', label: 'Piggy Bank', icon: 'PiggyBank' },
 ];
-
-function generateUUID(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
 
 export default function AddWalletModal() {
   const router = useRouter();
@@ -125,7 +108,6 @@ export default function AddWalletModal() {
           contentContainerStyle={styles.iconScrollContent}>
           {WALLET_ICONS.map((item) => {
             const selected = item.id === selectedIcon;
-            const IconComponent = item.Icon;
             return (
               <Pressable
                 key={item.id}
@@ -137,7 +119,8 @@ export default function AddWalletModal() {
                   },
                 ]}
                 onPress={() => setSelectedIcon(item.id)}>
-                <IconComponent
+                <CategoryIcon
+                  name={item.icon}
                   size={moderateScale(32)}
                   color={selected ? theme.primary : theme.textSecondary}
                   weight={selected ? 'fill' : 'regular'}

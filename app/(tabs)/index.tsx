@@ -1,38 +1,21 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import {
-  Airplane,
   ArrowDownLeft,
   ArrowUpRight,
-  Briefcase,
-  CalendarBlank,
-  CaretLeft,
-  CaretRight,
-  Car,
-  Coins,
-  DotsThreeOutline,
+  Bell,
+  CaretDown,
+  Check,
   Eye,
   EyeSlash,
-  FirstAid,
-  ForkKnife,
-  GameController,
-  Gift,
-  GraduationCap,
-  House,
-  Laptop,
-  List,
   Plus,
-  Receipt,
-  ShoppingCart,
-  TrendDown,
-  TrendUp,
-  Wallet as WalletIcon,
+  ShieldCheck,
+  User,
   X,
 } from 'phosphor-react-native';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
-  Image,
   Modal,
   Platform,
   Pressable,
@@ -40,150 +23,84 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   useColorScheme,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { getCategoryById } from '@/constants/categories';
+import { CategoryIcon } from '@/components/CategoryIcon';
+import { Category, getCategoryById, registerCategories } from '@/constants/categories';
 import { Colors } from '@/constants/colors';
 import {
+  addTransaction,
   getBalanceSummary,
+  getCategories,
   getTransactions,
-  getTransactionsInRange,
   getWallets,
   TransactionWithWallet,
   Wallet,
 } from '@/db/queries';
 import { fontScale, moderateScale, Radius, Spacing } from '@/utils/styling';
+import {
+  formatCurrency as safeFormatCurrency,
+  formatStatCurrency as safeFormatStatCurrency,
+  generateUUID,
+} from '@/utils/formatters';
 
 export default function HomeScreen() {
   const router = useRouter();
   const db = useSQLiteContext();
   const colorScheme = useColorScheme();
-  const theme = colorScheme === 'dark' ? Colors.dark : Colors.dark; // Dashboard is styled in premium dark mode
+  const isDark = colorScheme === 'dark';
+  const theme = isDark ? Colors.dark : Colors.light;
 
-  // User state
-  const [isBalanceHidden, setIsBalanceHidden] = useState<boolean>(false);
+  // Real-time state
   const [wallets, setWallets] = useState<Wallet[]>([]);
-  const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
+  const [transactions, setTransactions] = useState<TransactionWithWallet[]>([]);
   const [totalBalance, setTotalBalance] = useState<number>(0);
-  const [periodInflow, setPeriodInflow] = useState<number>(0);
-  const [periodOutflow, setPeriodOutflow] = useState<number>(0);
-  const [recentTransactions, setRecentTransactions] = useState<TransactionWithWallet[]>([]);
-  const [rangeTransactions, setRangeTransactions] = useState<TransactionWithWallet[]>([]);
-  const [refreshing, setRefreshing] = useState(false);
-  const [previewReceiptUri, setPreviewReceiptUri] = useState<string | null>(null);
+  const [totalIncome, setTotalIncome] = useState<number>(0);
+  const [totalExpense, setTotalExpense] = useState<number>(0);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
 
-  // Chart & Period state
-  const [timeFrame, setTimeFrame] = useState<'week' | 'month'>('week');
-  const [periodOffset, setPeriodOffset] = useState<number>(0); // 0 = current, -1 = previous, +1 = next
-  const [selectedBarIndex, setSelectedBarIndex] = useState<number | null>(null);
+  // UI state
+  const [isBalanceHidden, setIsBalanceHidden] = useState<boolean>(false);
+  const [selectedFilterCat, setSelectedFilterCat] = useState<string>('all');
+  const [activeWeekCycle, setActiveWeekCycle] = useState<'thisWeek' | 'lastWeek'>('thisWeek');
+  const [selectedDayIndex, setSelectedDayIndex] = useState<number | null>(null);
 
-  // Calculate start & end of current selected period
-  const { periodStart, periodEnd, periodLabel, isCurrentPeriod } = useMemo(() => {
-    const now = new Date();
-    const isCurrent = periodOffset === 0;
+  // Quick Log Drawer Modal State
+  const [isQuickLogOpen, setIsQuickLogOpen] = useState<boolean>(false);
+  const [quickAmount, setQuickAmount] = useState<string>('');
+  const [expenseCategories, setExpenseCategories] = useState<Category[]>([]);
+  const [quickCategory, setQuickCategory] = useState<string>('');
 
-    if (timeFrame === 'week') {
-      // Find Monday of the target week
-      const currentDay = now.getDay();
-      const daysSinceMonday = (currentDay + 6) % 7;
-      const targetMonday = new Date(now);
-      targetMonday.setHours(0, 0, 0, 0);
-      targetMonday.setDate(now.getDate() - daysSinceMonday + periodOffset * 7);
-
-      const targetSunday = new Date(targetMonday);
-      targetSunday.setDate(targetMonday.getDate() + 6);
-      targetSunday.setHours(23, 59, 59, 999);
-
-      let label = 'This Week';
-      if (periodOffset === -1) label = 'Last Week';
-      else if (periodOffset < -1) label = `${Math.abs(periodOffset)} Weeks Ago`;
-      else if (periodOffset === 1) label = 'Next Week';
-      else if (periodOffset > 1) label = `In ${periodOffset} Weeks`;
-
-      return {
-        periodStart: targetMonday.getTime(),
-        periodEnd: targetSunday.getTime(),
-        periodLabel: label,
-        isCurrentPeriod: isCurrent,
-      };
-    } else {
-      // Target Month
-      const targetMonth = new Date(now.getFullYear(), now.getMonth() + periodOffset, 1);
-      const start = targetMonth.getTime();
-      const endMonth = new Date(now.getFullYear(), now.getMonth() + periodOffset + 1, 0);
-      endMonth.setHours(23, 59, 59, 999);
-
-      let label = 'This Month';
-      if (periodOffset === -1) label = 'Last Month';
-      else if (periodOffset < -1) {
-        label = targetMonth.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-      } else if (periodOffset === 1) label = 'Next Month';
-      else if (periodOffset > 1) {
-        label = targetMonth.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-      }
-
-      return {
-        periodStart: start,
-        periodEnd: endMonth.getTime(),
-        periodLabel: label,
-        isCurrentPeriod: isCurrent,
-      };
-    }
-  }, [timeFrame, periodOffset]);
-
-  // Load dashboard data
+  // Load live data from SQLite
   const loadData = useCallback(async () => {
     try {
-      const [walletList, balanceSummary, recentList, periodTxs] = await Promise.all([
+      const [walletList, balanceSummary, txList, catList] = await Promise.all([
         getWallets(db),
         getBalanceSummary(db),
-        getTransactions(db, 15),
-        getTransactionsInRange(db, periodStart, periodEnd),
+        getTransactions(db, 30),
+        getCategories(db),
       ]);
 
       setWallets(walletList);
-
-      // Filter by selected wallet if any
-      if (selectedWalletId) {
-        const activeWallet = walletList.find((w) => w.id === selectedWalletId);
-        setTotalBalance(activeWallet ? activeWallet.current_balance : 0);
-
-        const filteredRecent = recentList.filter((t) => t.wallet_id === selectedWalletId);
-        setRecentTransactions(filteredRecent);
-
-        const filteredPeriod = periodTxs.filter((t) => t.wallet_id === selectedWalletId);
-        setRangeTransactions(filteredPeriod);
-
-        // Sum inflow and outflow for selected wallet in period
-        let inflow = 0;
-        let outflow = 0;
-        filteredPeriod.forEach((t) => {
-          if (t.type === 'income') inflow += t.amount;
-          else outflow += t.amount;
-        });
-        setPeriodInflow(inflow);
-        setPeriodOutflow(outflow);
-      } else {
-        setTotalBalance(balanceSummary.totalBalance);
-        setRecentTransactions(recentList);
-        setRangeTransactions(periodTxs);
-
-        let inflow = 0;
-        let outflow = 0;
-        periodTxs.forEach((t) => {
-          if (t.type === 'income') inflow += t.amount;
-          else outflow += t.amount;
-        });
-        setPeriodInflow(inflow);
-        setPeriodOutflow(outflow);
-      }
+      setTotalBalance(balanceSummary.totalBalance);
+      setTotalIncome(balanceSummary.totalIncome);
+      setTotalExpense(balanceSummary.totalExpense);
+      setTransactions(txList);
+      registerCategories(catList);
+      const expCats = catList.filter((c) => c.type === 'expense');
+      setExpenseCategories(expCats);
+      setQuickCategory((prev) => {
+        if (expCats.some((c) => c.id === prev)) return prev;
+        return expCats.length > 0 ? expCats[0].id : '';
+      });
     } catch (err) {
-      console.error('Failed to load dashboard data:', err);
+      console.error('Failed to load VaultFlow dashboard data:', err);
     }
-  }, [db, selectedWalletId, periodStart, periodEnd]);
+  }, [db]);
 
   useFocusEffect(
     useCallback(() => {
@@ -197,555 +114,612 @@ export default function HomeScreen() {
     setRefreshing(false);
   };
 
-  const formatCurrency = (val: number) => {
-    if (isBalanceHidden) return '$••••••••';
-    return `$${val.toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`;
+  // Safe-to-spend calculation - strictly starts at 0 if no balance
+  const safeToSpend = useMemo(() => {
+    const daysRemaining = 12;
+    const remainingBudget = Math.max(0, totalBalance * 0.25);
+    return Math.round(remainingBudget / daysRemaining);
+  }, [totalBalance]);
+
+  // Currency format with null/undefined safety
+  const formatCurrency = (val: number | null | undefined) => {
+    return safeFormatCurrency(val, isBalanceHidden);
   };
 
-  const formatStatCurrency = (val: number) => {
-    if (isBalanceHidden) return '$••••';
-    return `$${val.toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`;
+  const formatStatCurrency = (val: number | null | undefined) => {
+    return safeFormatStatCurrency(val, isBalanceHidden);
   };
 
-  // Group chart bars
-  const chartBars = useMemo(() => {
-    if (timeFrame === 'week') {
-      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-      const data = days.map((dayLabel, idx) => {
-        const dayStart = periodStart + idx * 24 * 60 * 60 * 1000;
-        const dayEnd = dayStart + 24 * 60 * 60 * 1000 - 1;
+  // Dynamic Weekly Spending Activity strictly computed from database transactions
+  const weeklyData = useMemo(() => {
+    const days = [
+      { day: 'M', full: 'Mon', heightPct: 4, amount: 0, isPeak: false },
+      { day: 'T', full: 'Tue', heightPct: 4, amount: 0, isPeak: false },
+      { day: 'W', full: 'Wed', heightPct: 4, amount: 0, isPeak: false },
+      { day: 'T', full: 'Thu', heightPct: 4, amount: 0, isPeak: false },
+      { day: 'F', full: 'Fri', heightPct: 4, amount: 0, isPeak: false },
+      { day: 'S', full: 'Sat', heightPct: 4, amount: 0, isPeak: false },
+      { day: 'S', full: 'Sun', heightPct: 4, amount: 0, isPeak: false },
+    ];
 
-        let income = 0;
-        let expense = 0;
+    const now = new Date();
+    const currentDay = (now.getDay() + 6) % 7;
+    const monday = new Date(now);
+    monday.setHours(0, 0, 0, 0);
+    monday.setDate(now.getDate() - currentDay);
+    const startOfWeek = monday.getTime();
 
-        rangeTransactions.forEach((t) => {
-          if (t.date >= dayStart && t.date <= dayEnd) {
-            if (t.type === 'income') income += t.amount;
-            else expense += t.amount;
-          }
-        });
-
-        return {
-          label: dayLabel,
-          income,
-          expense,
-        };
-      });
-
-      return data;
-    } else {
-      // 4 Weeks in Month
-      const weeks = ['W1', 'W2', 'W3', 'W4'];
-      const totalDays = 28;
-      const data = weeks.map((wLabel, idx) => {
-        const wStart = periodStart + idx * 7 * 24 * 60 * 60 * 1000;
-        const wEnd =
-          idx === 3 ? periodEnd : periodStart + (idx + 1) * 7 * 24 * 60 * 60 * 1000 - 1;
-
-        let income = 0;
-        let expense = 0;
-
-        rangeTransactions.forEach((t) => {
-          if (t.date >= wStart && t.date <= wEnd) {
-            if (t.type === 'income') income += t.amount;
-            else expense += t.amount;
-          }
-        });
-
-        return {
-          label: wLabel,
-          income,
-          expense,
-        };
-      });
-
-      return data;
-    }
-  }, [timeFrame, periodStart, periodEnd, rangeTransactions]);
-
-  // Max value calculation for chart scaling (default ceiling 500)
-  const maxVal = useMemo(() => {
-    let max = 500;
-    chartBars.forEach((b) => {
-      if (b.income > max) max = b.income;
-      if (b.expense > max) max = b.expense;
+    transactions.forEach((tx) => {
+      if (tx.type === 'expense' && tx.date >= startOfWeek) {
+        const d = new Date(tx.date);
+        const dayIdx = (d.getDay() + 6) % 7;
+        if (dayIdx >= 0 && dayIdx < 7) {
+          days[dayIdx].amount += tx.amount;
+        }
+      }
     });
-    return Math.ceil(max / 100) * 100;
-  }, [chartBars]);
 
-  // Format relative transaction date
-  const formatTxDate = (timestamp: number) => {
+    const maxAmt = Math.max(...days.map((d) => d.amount), 0);
+    days.forEach((d) => {
+      d.heightPct = maxAmt > 0 && d.amount > 0 ? Math.max(14, Math.round((d.amount / maxAmt) * 96)) : 4;
+      d.isPeak = maxAmt > 0 && d.amount === maxAmt;
+    });
+
+    return days;
+  }, [transactions]);
+
+  const avgPerDay = useMemo(() => {
+    const totalWk = weeklyData.reduce((acc, d) => acc + d.amount, 0);
+    return Math.round(totalWk / 7);
+  }, [weeklyData]);
+
+  // Dynamic category allocation stream computed from database
+  const categoryAllocations = useMemo(() => {
+    const expenses = transactions.filter((t) => t.type === 'expense');
+    const totalExp = expenses.reduce((acc, t) => acc + t.amount, 0);
+    if (totalExp === 0) return [];
+
+    const map: Record<string, number> = {};
+    expenses.forEach((t) => {
+      map[t.category] = (map[t.category] || 0) + t.amount;
+    });
+
+    return Object.entries(map).map(([catId, amt]) => {
+      const cat = getCategoryById(catId);
+      const pct = Math.round((amt / totalExp) * 100);
+      return { id: catId, name: cat.name, color: cat.color, pct, amount: amt };
+    });
+  }, [transactions]);
+
+  // Filter categories available from existing transactions
+  const availableFilterCategories = useMemo(() => {
+    const cats = Array.from(new Set(transactions.map((t) => t.category)));
+    return ['all', ...cats];
+  }, [transactions]);
+
+  // Filtered transactions
+  const filteredTransactions = useMemo(() => {
+    if (selectedFilterCat === 'all') return transactions;
+    return transactions.filter((tx) => tx.category === selectedFilterCat);
+  }, [transactions, selectedFilterCat]);
+
+  // Grouped by Date (Today vs Yesterday / Prior)
+  const groupedTransactions = useMemo(() => {
     const today = new Date();
-    const d = new Date(timestamp);
-    if (
-      d.getDate() === today.getDate() &&
-      d.getMonth() === today.getMonth() &&
-      d.getFullYear() === today.getFullYear()
-    ) {
-      return 'Today';
+    today.setHours(0, 0, 0, 0);
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const todayItems: TransactionWithWallet[] = [];
+    const yesterdayItems: TransactionWithWallet[] = [];
+    const olderItems: TransactionWithWallet[] = [];
+
+    filteredTransactions.forEach((tx) => {
+      const txDate = new Date(tx.date);
+      txDate.setHours(0, 0, 0, 0);
+
+      if (txDate.getTime() === today.getTime()) {
+        todayItems.push(tx);
+      } else if (txDate.getTime() === yesterday.getTime()) {
+        yesterdayItems.push(tx);
+      } else {
+        olderItems.push(tx);
+      }
+    });
+
+    const todayStr = today.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const yesterdayStr = yesterday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+    return [
+      { title: `Today, ${todayStr}`, data: todayItems },
+      { title: `Yesterday, ${yesterdayStr}`, data: yesterdayItems },
+      { title: 'Earlier This Month', data: olderItems },
+    ].filter((group) => group.data.length > 0);
+  }, [filteredTransactions]);
+
+  // Quick Log Transaction Submit
+  const handleQuickLogSubmit = async () => {
+    const amt = parseFloat(quickAmount);
+    if (isNaN(amt) || amt <= 0) {
+      Alert.alert('Invalid Amount', 'Please enter a valid expense amount.');
+      return;
     }
-    const yesterday = new Date();
-    yesterday.setDate(today.getDate() - 1);
-    if (
-      d.getDate() === yesterday.getDate() &&
-      d.getMonth() === yesterday.getMonth() &&
-      d.getFullYear() === yesterday.getFullYear()
-    ) {
-      return 'Yesterday';
+
+    if (wallets.length === 0) {
+      Alert.alert('No Wallet Found', 'Please create a wallet first.');
+      return;
     }
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+    if (!quickCategory) {
+      Alert.alert('No Category', 'Please select or add an expense category first.');
+      return;
+    }
+
+    try {
+      const targetWallet = wallets[0];
+      const newTxId = generateUUID();
+      const catInfo = getCategoryById(quickCategory);
+      await addTransaction(db, {
+        id: newTxId,
+        wallet_id: targetWallet.id,
+        type: 'expense',
+        amount: amt,
+        category: quickCategory,
+        description: `Quick ${catInfo.name}`,
+        date: Date.now(),
+      });
+
+      setQuickAmount('');
+      setIsQuickLogOpen(false);
+      await loadData();
+    } catch (err) {
+      console.error('Failed to log quick expense:', err);
+      Alert.alert('Error', 'Could not record quick expense.');
+    }
   };
 
-  // Render category icon based on icon name
-  const renderCategoryIcon = (iconName: string, color: string) => {
-    const size = moderateScale(20);
-    switch (iconName) {
-      case 'ShoppingCart':
-      case 'Bag':
-        return <ShoppingCart size={size} color={color} weight="fill" />;
-      case 'Car':
-        return <Car size={size} color={color} weight="fill" />;
-      case 'ForkKnife':
-        return <ForkKnife size={size} color={color} weight="fill" />;
-      case 'House':
-        return <House size={size} color={color} weight="fill" />;
-      case 'Receipt':
-        return <Receipt size={size} color={color} weight="fill" />;
-      case 'GameController':
-        return <GameController size={size} color={color} weight="fill" />;
-      case 'FirstAid':
-        return <FirstAid size={size} color={color} weight="fill" />;
-      case 'GraduationCap':
-        return <GraduationCap size={size} color={color} weight="fill" />;
-      case 'Airplane':
-        return <Airplane size={size} color={color} weight="fill" />;
-      case 'Briefcase':
-        return <Briefcase size={size} color={color} weight="fill" />;
-      case 'CalendarBlank':
-        return <CalendarBlank size={size} color={color} weight="fill" />;
-      case 'Laptop':
-        return <Laptop size={size} color={color} weight="fill" />;
-      case 'TrendUp':
-        return <TrendUp size={size} color={color} weight="fill" />;
-      case 'Gift':
-        return <Gift size={size} color={color} weight="fill" />;
-      case 'Coins':
-        return <Coins size={size} color={color} weight="fill" />;
-      default:
-        return <DotsThreeOutline size={size} color={color} weight="fill" />;
-    }
-  };
+
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={[styles.screen, { backgroundColor: theme.surface }]} edges={['top', 'left', 'right']}>
+      {/* 1. VAULTFLOW TOP HEADER */}
+      <View style={styles.topHeader}>
+        <View style={styles.headerLeft}>
+          <View style={[styles.avatarCircle, { backgroundColor: theme.primary }]}>
+            <User size={moderateScale(18)} color="#003824" weight="bold" />
+          </View>
+          <View>
+            <Text style={[styles.appBranding, { color: theme.textSecondary }]}>VAULTFLOW</Text>
+            <Text style={[styles.screenTitle, { color: theme.text }]}>Dashboard</Text>
+          </View>
+        </View>
+
+        <Pressable
+          style={[styles.iconButton, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}
+          onPress={() => Alert.alert('Notifications', 'All your accounts and limits are on track!')}>
+          <Bell size={moderateScale(20)} color={theme.text} weight="bold" />
+          <View style={styles.notificationDot} />
+        </Pressable>
+      </View>
+
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            tintColor="#00E5FF"
-          />
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.primary} />
         }>
-        {/* 1. TOP HEADER (Dashboard title with Menu & Eye toggle) */}
-        <View style={styles.headerRow}>
-          <Pressable
-            style={styles.headerIconButton}
-            onPress={() =>
-              Alert.alert('Expico', 'Modern financial tracker built with Expo & SQLite.')
-            }>
-            <List size={moderateScale(20)} color="#FFFFFF" weight="bold" />
-          </Pressable>
+        {/* 2. REMAINING / TOTAL AVAILABLE BALANCE CARD */}
+        <View style={[styles.balanceCard, { backgroundColor: isDark ? '#262A34' : '#FFFFFF', borderColor: theme.border }]}>
+          {/* Subtle Ambient Radial Radiance */}
+          <View style={styles.glowTopRight} />
+          <View style={styles.glowBottomLeft} />
 
-          <Text style={styles.headerTitle}>Dashboard</Text>
+          {/* Sub-header */}
+          <View style={styles.balanceSubHeader}>
+            <View style={styles.balanceLabelGroup}>
+              <Text style={[styles.balanceCardLabel, { color: theme.textSecondary }]}>
+                TOTAL AVAILABLE BALANCE
+              </Text>
+              <Pressable
+                style={styles.eyeBtn}
+                onPress={() => setIsBalanceHidden((prev) => !prev)}>
+                {isBalanceHidden ? (
+                  <EyeSlash size={moderateScale(16)} color={theme.textSecondary} weight="bold" />
+                ) : (
+                  <Eye size={moderateScale(16)} color={theme.textSecondary} weight="bold" />
+                )}
+              </Pressable>
+            </View>
 
-          <Pressable
-            style={styles.headerIconButton}
-            onPress={() => setIsBalanceHidden(!isBalanceHidden)}>
-            {isBalanceHidden ? (
-              <EyeSlash size={moderateScale(20)} color="#00E5FF" weight="bold" />
-            ) : (
-              <Eye size={moderateScale(20)} color="#FFFFFF" weight="bold" />
-            )}
-          </Pressable>
+            <View style={[styles.periodPill, { backgroundColor: isDark ? '#31353F' : '#F1F5F9' }]}>
+              <Text style={[styles.periodPillText, { color: theme.text }]}>October 2026</Text>
+              <CaretDown size={moderateScale(12)} color={theme.textSecondary} weight="bold" />
+            </View>
+          </View>
+
+          {/* Main Balance Display */}
+          <Text style={[styles.balanceAmountText, { color: theme.text }]}>
+            {formatCurrency(totalBalance)}
+          </Text>
+
+          {/* Month over Month Badge */}
+          <View style={styles.momRow}>
+            <View style={[styles.momBadge, { backgroundColor: 'rgba(16, 185, 129, 0.2)' }]}>
+              <Text style={styles.momBadgeText}>Ledger Active</Text>
+            </View>
+            <Text style={[styles.momSubtext, { color: theme.textSecondary }]}>Real-time Balance</Text>
+          </View>
+
+          {/* Safe-to-Spend Pill Banner */}
+          <View style={[styles.safeToSpendBanner, { backgroundColor: isDark ? '#181B25' : '#F8FAFC' }]}>
+            <View style={styles.safeLeft}>
+              <View style={[styles.shieldCircle, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
+                <ShieldCheck size={moderateScale(14)} color="#10B981" weight="fill" />
+              </View>
+              <Text style={[styles.safeLabel, { color: theme.textSecondary }]}>Daily Safe-to-Spend</Text>
+            </View>
+            <View style={styles.safeRight}>
+              <Text style={[styles.safeAmount, { color: theme.text }]}>
+                {formatStatCurrency(safeToSpend)}
+              </Text>
+              <View style={[styles.optimalBadge, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
+                <Text style={styles.optimalText}>Optimal</Text>
+              </View>
+            </View>
+          </View>
         </View>
 
-        {/* 2. TOTAL BALANCE SECTION */}
-        <View style={styles.balanceSection}>
-          <Text style={styles.balanceLabel}>Total Balance</Text>
-          <Text style={styles.balanceAmount}>{formatCurrency(totalBalance)}</Text>
+        {/* 3. SPLIT INCOME & EXPENSE CARDS */}
+        <View style={styles.splitCardsRow}>
+          {/* Total Income */}
+          <View style={[styles.splitCard, { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF', borderColor: theme.border }]}>
+            <View style={styles.splitCardHeader}>
+              <View style={[styles.splitIconCircle, { backgroundColor: 'rgba(16, 185, 129, 0.2)' }]}>
+                <ArrowUpRight size={moderateScale(18)} color="#10B981" weight="bold" />
+              </View>
+              <View style={[styles.statChangeBadge, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
+                <Text style={[styles.statChangeText, { color: '#10B981' }]}>Income</Text>
+              </View>
+            </View>
+            <Text style={[styles.splitCardLabel, { color: theme.textSecondary }]}>TOTAL INCOME</Text>
+            <Text style={[styles.splitCardValue, { color: '#4EDEA3' }]}>
+              +{formatStatCurrency(totalIncome)}
+            </Text>
+          </View>
 
-          {/* Account / Wallet Chips */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.walletPillsRow}>
-            {/* "All" Chip */}
-            <Pressable
-              style={[
-                styles.walletPill,
-                selectedWalletId === null && styles.walletPillActive,
-              ]}
-              onPress={() => setSelectedWalletId(null)}>
-              <View
-                style={[
-                  styles.walletDot,
-                  { backgroundColor: selectedWalletId === null ? '#00E5FF' : '#64748B' },
-                ]}
-              />
-              <Text
-                style={[
-                  styles.walletPillText,
-                  selectedWalletId === null && styles.walletPillTextActive,
-                ]}>
-                All Accounts
+          {/* Total Expenses */}
+          <View style={[styles.splitCard, { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF', borderColor: theme.border }]}>
+            <View style={styles.splitCardHeader}>
+              <View style={[styles.splitIconCircle, { backgroundColor: 'rgba(244, 63, 94, 0.2)' }]}>
+                <ArrowDownLeft size={moderateScale(18)} color="#F43F5E" weight="bold" />
+              </View>
+              <View style={[styles.statChangeBadge, { backgroundColor: 'rgba(244, 63, 94, 0.15)' }]}>
+                <Text style={[styles.statChangeText, { color: '#F43F5E' }]}>Expenses</Text>
+              </View>
+            </View>
+            <Text style={[styles.splitCardLabel, { color: theme.textSecondary }]}>TOTAL EXPENSES</Text>
+            <Text style={[styles.splitCardValue, { color: '#FFB2B7' }]}>
+              -{formatStatCurrency(totalExpense)}
+            </Text>
+          </View>
+        </View>
+
+        {/* 4. WEEKLY SPENDING ACTIVITY SECTION */}
+        <View style={[styles.activitySection, { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF', borderColor: theme.border }]}>
+          <View style={styles.activityHeader}>
+            <View>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>Weekly Spending Activity</Text>
+              <Text style={[styles.activitySub, { color: theme.textSecondary }]}>
+                Avg {formatStatCurrency(avgPerDay)} / day this cycle
               </Text>
-            </Pressable>
+            </View>
 
-            {/* Individual Wallet Pills */}
-            {wallets.map((w, idx) => {
-              const isSelected = w.id === selectedWalletId;
-              const dotColor = idx === 0 ? '#00E5FF' : idx === 1 ? '#10B981' : '#8B5CF6';
+            {/* Cycle Pill Toggle */}
+            <View style={[styles.cycleToggleWrap, { backgroundColor: isDark ? '#262A34' : '#F1F5F9' }]}>
+              <Pressable
+                style={[styles.cycleBtn, activeWeekCycle === 'thisWeek' && styles.cycleBtnActive]}
+                onPress={() => setActiveWeekCycle('thisWeek')}>
+                <Text
+                  style={[
+                    styles.cycleText,
+                    { color: activeWeekCycle === 'thisWeek' ? '#003824' : theme.textSecondary },
+                  ]}>
+                  This Week
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.cycleBtn, activeWeekCycle === 'lastWeek' && styles.cycleBtnActive]}
+                onPress={() => setActiveWeekCycle('lastWeek')}>
+                <Text
+                  style={[
+                    styles.cycleText,
+                    { color: activeWeekCycle === 'lastWeek' ? '#003824' : theme.textSecondary },
+                  ]}>
+                  Last Week
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+
+          {/* Peak Tooltip Header */}
+          <View style={styles.peakTooltipRow}>
+            {selectedDayIndex !== null && weeklyData[selectedDayIndex] && (
+              <View style={[styles.peakBadge, { backgroundColor: isDark ? '#31353F' : '#FEE2E2' }]}>
+                <View style={[styles.peakDot, { backgroundColor: '#F43F5E' }]} />
+                <Text style={[styles.peakText, { color: theme.text }]}>
+                  {weeklyData[selectedDayIndex].isPeak ? 'Peak ' : ''}
+                  {formatStatCurrency(weeklyData[selectedDayIndex].amount)}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* 7 Columns Weekly Chart */}
+          <View style={styles.chartBarsContainer}>
+            {weeklyData.map((col, idx) => {
+              const isSelected = selectedDayIndex === idx;
+
               return (
                 <Pressable
-                  key={w.id}
-                  style={[styles.walletPill, isSelected && styles.walletPillActive]}
-                  onPress={() => setSelectedWalletId(isSelected ? null : w.id)}>
-                  <View style={[styles.walletDot, { backgroundColor: dotColor }]} />
+                  key={`day-${idx}`}
+                  style={styles.chartCol}
+                  onPress={() => setSelectedDayIndex(idx)}>
+                  <View style={styles.barTrack}>
+                    <View
+                      style={[
+                        styles.barFill,
+                        { height: `${col.heightPct}%` },
+                        col.isPeak
+                          ? { backgroundColor: '#F43F5E' }
+                          : isSelected
+                          ? { backgroundColor: '#10B981' }
+                          : { backgroundColor: isDark ? '#31353F' : '#E2E8F0' },
+                      ]}
+                    />
+                  </View>
                   <Text
                     style={[
-                      styles.walletPillText,
-                      isSelected && styles.walletPillTextActive,
+                      styles.barLabel,
+                      {
+                        color: col.isPeak
+                          ? '#F43F5E'
+                          : isSelected
+                          ? '#10B981'
+                          : theme.textSecondary,
+                        fontWeight: isSelected || col.isPeak ? '700' : '500',
+                      },
                     ]}>
-                    {w.name}
+                    {col.day}
                   </Text>
                 </Pressable>
               );
             })}
-
-            {/* Add Wallet Shortcut */}
-            <Pressable
-              style={styles.walletAddPill}
-              onPress={() => router.push('/add-wallet')}>
-              <Plus size={moderateScale(12)} color="#00E5FF" weight="bold" />
-              <Text style={styles.walletAddPillText}>Add</Text>
-            </Pressable>
-          </ScrollView>
-        </View>
-
-        {/* 3. INCOME & EXPENSES 2-COLUMN CARDS */}
-        <View style={styles.statsCardsRow}>
-          {/* Income Card */}
-          <View style={styles.statCard}>
-            <View style={styles.statCardHeader}>
-              <View style={styles.incomeIconBadge}>
-                <TrendUp size={moderateScale(16)} color="#00E5FF" weight="bold" />
-              </View>
-              <Text style={styles.statCardLabel}>Income</Text>
-            </View>
-            <Text style={styles.statCardValue}>{formatStatCurrency(periodInflow)}</Text>
           </View>
 
-          {/* Expenses Card */}
-          <View style={styles.statCard}>
-            <View style={styles.statCardHeader}>
-              <View style={styles.expenseIconBadge}>
-                <TrendDown size={moderateScale(16)} color="#8B5CF6" weight="bold" />
-              </View>
-              <Text style={styles.statCardLabel}>Expenses</Text>
-            </View>
-            <Text style={styles.statCardValue}>{formatStatCurrency(periodOutflow)}</Text>
-          </View>
-        </View>
-
-        {/* 4. PERIOD NAVIGATION & DUAL-BAR CHART */}
-        <View style={styles.chartCard}>
-          {/* Period Header (< This Week • Current Period >) */}
-          <View style={styles.periodNavRow}>
-            <Pressable
-              style={styles.navArrowBtn}
-              hitSlop={8}
-              onPress={() => setPeriodOffset((prev) => prev - 1)}>
-              <CaretLeft size={moderateScale(14)} color="#FFFFFF" weight="bold" />
-            </Pressable>
-
-            <View style={styles.periodCenterCol}>
-              <Text style={styles.periodTitle}>{periodLabel}</Text>
-              <View style={styles.periodStatusRow}>
-                <View
-                  style={[
-                    styles.statusDot,
-                    { backgroundColor: isCurrentPeriod ? '#00E5FF' : '#8B5CF6' },
-                  ]}
-                />
-                <Text
-                  style={[
-                    styles.statusText,
-                    { color: isCurrentPeriod ? '#00E5FF' : '#8E9BAE' },
-                  ]}>
-                  {isCurrentPeriod ? 'Current Period' : 'Past Period'}
-                </Text>
-              </View>
-            </View>
-
-            <Pressable
-              style={[
-                styles.navArrowBtn,
-                isCurrentPeriod && styles.navArrowBtnDisabled,
-              ]}
-              hitSlop={8}
-              disabled={isCurrentPeriod}
-              onPress={() => setPeriodOffset((prev) => prev + 1)}>
-              <CaretRight
-                size={moderateScale(14)}
-                color={isCurrentPeriod ? '#5A677B' : '#FFFFFF'}
-                weight="bold"
-              />
-            </Pressable>
-          </View>
-
-          {/* Segmented Toggle (Week / Month) */}
-          <View style={styles.segmentedToggle}>
-            <Pressable
-              style={[
-                styles.toggleTab,
-                timeFrame === 'week' && styles.toggleTabActive,
-              ]}
-              onPress={() => {
-                setTimeFrame('week');
-                setPeriodOffset(0);
-                setSelectedBarIndex(null);
-              }}>
-              <Text
-                style={[
-                  styles.toggleTabText,
-                  timeFrame === 'week' && styles.toggleTabTextActive,
-                ]}>
-                Week
+          {/* Category Allocation Pill Stream */}
+          <View style={styles.allocationPillsRow}>
+            {categoryAllocations.length > 0 ? (
+              categoryAllocations.map((alloc) => (
+                <View key={alloc.id} style={[styles.allocPill, { backgroundColor: isDark ? '#262A34' : '#F1F5F9' }]}>
+                  <View style={[styles.allocDot, { backgroundColor: alloc.color }]} />
+                  <Text style={[styles.allocText, { color: theme.text }]}>
+                    {alloc.name} {alloc.pct}%
+                  </Text>
+                </View>
+              ))
+            ) : (
+              <Text style={{ color: theme.textMuted, fontSize: fontScale(11) }}>
+                No category expenses logged yet (0% allocated)
               </Text>
-            </Pressable>
-
-            <Pressable
-              style={[
-                styles.toggleTab,
-                timeFrame === 'month' && styles.toggleTabActive,
-              ]}
-              onPress={() => {
-                setTimeFrame('month');
-                setPeriodOffset(0);
-                setSelectedBarIndex(null);
-              }}>
-              <Text
-                style={[
-                  styles.toggleTabText,
-                  timeFrame === 'month' && styles.toggleTabTextActive,
-                ]}>
-                Month
-              </Text>
-            </Pressable>
-          </View>
-
-          {/* Custom Dual Bar Chart */}
-          <View style={styles.chartContainer}>
-            {/* Horizontal Grid lines with Y-Axis Values */}
-            <View style={styles.chartGridOverlay}>
-              {[maxVal, Math.round(maxVal * 0.8), Math.round(maxVal * 0.6), Math.round(maxVal * 0.4), Math.round(maxVal * 0.2), 0].map(
-                (stepVal, idx) => (
-                  <View key={idx} style={styles.gridLineRow}>
-                    <Text style={styles.yAxisLabel}>{stepVal}</Text>
-                    <View style={styles.gridLine} />
-                  </View>
-                )
-              )}
-            </View>
-
-            {/* Bars Area */}
-            <View style={styles.barsContainer}>
-              {chartBars.map((item, idx) => {
-                const chartHeight = moderateScale(140);
-                const incomeHeight = Math.max(
-                  item.income > 0 ? (item.income / maxVal) * chartHeight : 0,
-                  item.income > 0 ? moderateScale(6) : 0
-                );
-                const expenseHeight = Math.max(
-                  item.expense > 0 ? (item.expense / maxVal) * chartHeight : 0,
-                  item.expense > 0 ? moderateScale(6) : 0
-                );
-
-                const isSelected = selectedBarIndex === idx;
-
-                return (
-                  <Pressable
-                    key={idx}
-                    style={styles.barGroup}
-                    onPress={() =>
-                      setSelectedBarIndex(isSelected ? null : idx)
-                    }>
-                    {/* Tooltip on select */}
-                    {isSelected && (
-                      <View style={styles.barTooltip}>
-                        <Text style={styles.barTooltipText}>
-                          +{formatStatCurrency(item.income)} / -{formatStatCurrency(item.expense)}
-                        </Text>
-                      </View>
-                    )}
-
-                    {/* The Bar Columns */}
-                    <View style={styles.barColumnsRow}>
-                      {/* Purple bar (Expense) */}
-                      {expenseHeight > 0 && (
-                        <View
-                          style={[
-                            styles.bar,
-                            {
-                              height: expenseHeight,
-                              backgroundColor: '#8B5CF6',
-                            },
-                          ]}
-                        />
-                      )}
-
-                      {/* Cyan bar (Income) */}
-                      {incomeHeight > 0 && (
-                        <View
-                          style={[
-                            styles.bar,
-                            {
-                              height: incomeHeight,
-                              backgroundColor: '#00E5FF',
-                            },
-                          ]}
-                        />
-                      )}
-
-                      {/* Fallback tiny dot if zero */}
-                      {incomeHeight === 0 && expenseHeight === 0 && (
-                        <View style={styles.barPlaceholderDot} />
-                      )}
-                    </View>
-
-                    {/* Day / Week Label */}
-                    <Text
-                      style={[
-                        styles.xAxisLabel,
-                        isSelected && styles.xAxisLabelSelected,
-                      ]}>
-                      {item.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+            )}
           </View>
         </View>
 
-        {/* 5. RECENT TRANSACTIONS FEED */}
-        <View style={styles.recentSection}>
-          <View style={styles.recentHeaderRow}>
-            <Text style={styles.recentSectionTitle}>Recent Transactions</Text>
-            <Pressable
-              onPress={() => router.push('/analytics')}
-              hitSlop={10}
-              style={styles.viewAllRow}>
-              <Text style={styles.viewAllText}>View All</Text>
-              <ArrowUpRight size={moderateScale(14)} color="#00E5FF" weight="bold" />
+        {/* 5. ALL TRANSACTIONS DONE (RECENT TRANSACTIONS) */}
+        <View style={styles.transactionsSection}>
+          <View style={styles.txHeaderRow}>
+            <View>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>Recent Transactions</Text>
+              <Text style={[styles.activitySub, { color: theme.textSecondary }]}>
+                Real-time ledger updates
+              </Text>
+            </View>
+            <Pressable onPress={() => router.push('/(tabs)/analytics')}>
+              <Text style={[styles.seeAllText, { color: theme.primary }]}>SEE ALL</Text>
             </Pressable>
           </View>
 
-          {recentTransactions.length === 0 ? (
-            <View style={styles.emptyFeedBox}>
-              <Receipt size={moderateScale(36)} color="#5A677B" />
-              <Text style={styles.emptyFeedText}>No transactions yet</Text>
-              <Text style={styles.emptyFeedSub}>Tap the + button below to add your first expense</Text>
-            </View>
-          ) : (
-            recentTransactions.map((tx) => {
-              const cat = getCategoryById(tx.category);
-              const isIncome = tx.type === 'income';
-              const accentColor = cat.color;
+          {/* Filter Category Scroll Bar */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterPillsScroll}>
+            {availableFilterCategories.map((cat) => {
+              const active = selectedFilterCat === cat;
+              const catInfo = cat !== 'all' ? getCategoryById(cat) : null;
+              const label = cat === 'all' ? 'All' : catInfo?.name || cat;
 
               return (
                 <Pressable
-                  key={tx.id}
-                  style={styles.transactionCard}
-                  onPress={() => {
-                    if (tx.receipt_path) {
-                      setPreviewReceiptUri(tx.receipt_path);
-                    }
-                  }}>
-                  {/* Left accent color stripe */}
-                  <View style={[styles.txAccentStripe, { backgroundColor: accentColor }]} />
-
-                  {/* Icon Box */}
-                  <View
+                  key={cat}
+                  style={[
+                    styles.categoryFilterBtn,
+                    active
+                      ? { backgroundColor: '#10B981' }
+                      : { backgroundColor: isDark ? '#262A34' : '#F1F5F9' },
+                  ]}
+                  onPress={() => setSelectedFilterCat(cat)}>
+                  <Text
                     style={[
-                      styles.txIconBox,
-                      { backgroundColor: `${accentColor}20` },
+                      styles.categoryFilterText,
+                      { color: active ? '#003824' : theme.textSecondary, fontWeight: active ? '700' : '600' },
                     ]}>
-                    {renderCategoryIcon(cat.icon, accentColor)}
-                  </View>
-
-                  {/* Transaction Details */}
-                  <View style={styles.txInfoCol}>
-                    <Text style={styles.txTitle} numberOfLines={1}>
-                      {tx.description || cat.name}
-                    </Text>
-                    <Text style={styles.txMeta} numberOfLines={1}>
-                      {formatTxDate(tx.date)} • {cat.name}
-                    </Text>
-                  </View>
-
-                  {/* Amount on Right */}
-                  <View style={styles.txAmountCol}>
-                    <Text
-                      style={[
-                        styles.txAmountText,
-                        { color: isIncome ? '#00E5FF' : '#FFFFFF' },
-                      ]}>
-                      {isIncome ? '+' : '-'}{formatStatCurrency(tx.amount)}
-                    </Text>
-                  </View>
+                    {label}
+                  </Text>
                 </Pressable>
               );
-            })
+            })}
+          </ScrollView>
+
+          {/* Grouped Transactions List */}
+          {groupedTransactions.length > 0 ? (
+            groupedTransactions.map((group, gIdx) => (
+              <View key={`group-${gIdx}`} style={styles.dateGroupContainer}>
+                <Text style={[styles.dateGroupTitle, { color: theme.textSecondary }]}>
+                  {group.title.toUpperCase()}
+                </Text>
+                <View style={styles.dateGroupCards}>
+                  {group.data.map((tx) => {
+                    const isIncome = tx.type === 'income';
+                    const categoryInfo = getCategoryById(tx.category);
+
+                    return (
+                      <View
+                        key={tx.id}
+                        style={[
+                          styles.transactionCard,
+                          { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF', borderColor: theme.border },
+                        ]}>
+                        <View style={styles.txLeft}>
+                          <View
+                            style={[
+                              styles.txIconSquircle,
+                              { backgroundColor: isDark ? '#262A34' : '#F1F5F9' },
+                            ]}>
+                            <CategoryIcon name={categoryInfo.icon} size={moderateScale(20)} color={categoryInfo.color} />
+                          </View>
+                          <View style={styles.txDetails}>
+                            <View style={styles.txTitleRow}>
+                              <Text style={[styles.txTitle, { color: theme.text }]} numberOfLines={1}>
+                                {tx.description || categoryInfo.name}
+                              </Text>
+                              <View
+                                style={[
+                                  styles.txCategoryTag,
+                                  { backgroundColor: isDark ? '#262A34' : '#F1F5F9' },
+                                ]}>
+                                <Text style={[styles.txCategoryTagText, { color: categoryInfo.color }]}>
+                                  {categoryInfo.name}
+                                </Text>
+                              </View>
+                            </View>
+                            <Text style={[styles.txSubtext, { color: theme.textMuted }]}>
+                              {new Date(tx.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} •{' '}
+                              {tx.wallet_name || 'Main Wallet'}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <Text
+                          style={[
+                            styles.txAmount,
+                            { color: isIncome ? '#10B981' : theme.text },
+                          ]}>
+                          {isIncome ? '+' : '-'}
+                          {formatCurrency(tx.amount)}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            ))
+          ) : (
+            <View style={[styles.emptyContainer, { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF' }]}>
+              <Text style={[styles.emptyTitle, { color: theme.text }]}>No Transactions Found</Text>
+              <Text style={[styles.emptySubtitle, { color: theme.textMuted }]}>
+                No expenses matched the &quot;{selectedFilterCat}&quot; category.
+              </Text>
+            </View>
           )}
         </View>
       </ScrollView>
 
-      {/* 6. FLOATING ACTION BUTTON (Cyan Glow Circle +) */}
-      <Pressable
-        style={styles.fab}
-        onPress={() => router.push('/add-transaction')}>
-        <Plus size={moderateScale(28)} color="#0B0E14" weight="bold" />
-      </Pressable>
-
-      {/* Receipt Image Preview Modal */}
-      <Modal
-        visible={Boolean(previewReceiptUri)}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setPreviewReceiptUri(null)}>
-        <View style={styles.previewOverlay}>
+      {/* 7. QUICK ACTION DRAWER MODAL SHEET */}
+      <Modal visible={isQuickLogOpen} transparent animationType="slide" onRequestClose={() => setIsQuickLogOpen(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setIsQuickLogOpen(false)}>
           <Pressable
-            style={styles.closePreviewBtn}
-            onPress={() => setPreviewReceiptUri(null)}>
-            <X size={moderateScale(24)} color="#FFFFFF" weight="bold" />
+            style={[styles.modalSheet, { backgroundColor: isDark ? '#262A34' : '#FFFFFF' }]}
+            onPress={(e) => e.stopPropagation()}>
+            <View style={styles.sheetHandle} />
+
+            <View style={styles.sheetHeader}>
+              <View>
+                <Text style={[styles.sheetTitle, { color: theme.text }]}>Log Quick Expense</Text>
+                <Text style={[styles.sheetSub, { color: theme.textSecondary }]}>
+                  Instantly update your safe-to-spend target
+                </Text>
+              </View>
+              <Pressable
+                style={[styles.closeBtn, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}
+                onPress={() => setIsQuickLogOpen(false)}>
+                <X size={moderateScale(18)} color={theme.text} weight="bold" />
+              </Pressable>
+            </View>
+
+            {/* Currency Input Box */}
+            <View style={[styles.currencyInputBox, { backgroundColor: isDark ? '#1C1F29' : '#F8FAFC' }]}>
+              <Text style={[styles.currencySymbol, { color: theme.text }]}>₹</Text>
+              <TextInput
+                style={[styles.currencyInput, { color: theme.text }]}
+                placeholder="0.00"
+                placeholderTextColor={theme.textMuted}
+                keyboardType="decimal-pad"
+                autoFocus
+                value={quickAmount}
+                onChangeText={setQuickAmount}
+              />
+            </View>
+
+            {/* Quick Category Grid */}
+            {expenseCategories.length === 0 ? (
+              <View style={styles.quickEmptyWrap}>
+                <Text style={[styles.quickEmptyText, { color: theme.textMuted }]}>
+                  No expense categories created yet.
+                </Text>
+                <Pressable
+                  style={[styles.quickAddCategoryBtn, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}
+                  onPress={() => {
+                    setIsQuickLogOpen(false);
+                    router.push('/(modals)/add-transaction');
+                  }}>
+                  <Plus size={moderateScale(14)} color={theme.primary} weight="bold" />
+                  <Text style={[styles.quickAddCategoryBtnText, { color: theme.primary }]}>
+                    + Add Category in Transaction Modal
+                  </Text>
+                </Pressable>
+              </View>
+            ) : (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.quickCategoryRow}>
+                {expenseCategories.map((item) => {
+                  const isSelected = quickCategory === item.id;
+
+                  return (
+                    <Pressable
+                      key={item.id}
+                      style={[
+                        styles.quickCatBtn,
+                        { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' },
+                        isSelected && { borderColor: '#10B981', borderWidth: 1.5 },
+                      ]}
+                      onPress={() => setQuickCategory(item.id)}>
+                      <CategoryIcon name={item.icon} size={moderateScale(22)} color={item.color} weight="fill" />
+                      <Text style={[styles.quickCatText, { color: theme.text }]} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            )}
+
+            {/* Record Expense Button */}
+            <Pressable style={[styles.confirmRecordBtn, { backgroundColor: '#10B981' }]} onPress={handleQuickLogSubmit}>
+              <Check size={moderateScale(20)} color="#003824" weight="bold" />
+              <Text style={styles.confirmRecordText}>Record Expense</Text>
+            </Pressable>
           </Pressable>
-          {previewReceiptUri ? (
-            <Image
-              source={{ uri: previewReceiptUri }}
-              style={styles.fullScreenImage}
-              resizeMode="contain"
-            />
-          ) : null}
-        </View>
+        </Pressable>
       </Modal>
     </SafeAreaView>
   );
@@ -754,455 +728,596 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#0B0E14',
   },
-  scrollContent: {
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.sm,
-    paddingBottom: moderateScale(110),
-  },
-
-  // 1. Header
-  headerRow: {
+  topHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.sm,
   },
-  headerIconButton: {
-    width: moderateScale(42),
-    height: moderateScale(42),
-    borderRadius: Radius.full,
-    backgroundColor: '#161B26',
-    borderWidth: 1,
-    borderColor: '#222836',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: fontScale(20),
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: -0.3,
-  },
-
-  // 2. Total Balance Section
-  balanceSection: {
-    marginTop: Spacing.md,
-  },
-  balanceLabel: {
-    fontSize: fontScale(13),
-    color: '#8E9BAE',
-    fontWeight: '500',
-  },
-  balanceAmount: {
-    fontSize: fontScale(38),
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: -1,
-    marginTop: moderateScale(4),
-    marginBottom: Spacing.md,
-  },
-  walletPillsRow: {
+  headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
   },
-  walletPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#161B26',
-    borderWidth: 1,
-    borderColor: '#222836',
+  avatarCircle: {
+    width: moderateScale(34),
+    height: moderateScale(34),
     borderRadius: Radius.full,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: moderateScale(7),
-    gap: moderateScale(6),
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  walletPillActive: {
-    borderColor: '#00E5FF',
-    backgroundColor: '#00E5FF15',
+  appBranding: {
+    fontSize: fontScale(10),
+    fontWeight: '700',
+    letterSpacing: 1.2,
   },
-  walletDot: {
+  screenTitle: {
+    fontSize: fontScale(18),
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  iconButton: {
+    width: moderateScale(40),
+    height: moderateScale(40),
+    borderRadius: Radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  notificationDot: {
     width: moderateScale(8),
     height: moderateScale(8),
     borderRadius: Radius.full,
+    backgroundColor: '#10B981',
+    position: 'absolute',
+    top: moderateScale(8),
+    right: moderateScale(10),
   },
-  walletPillText: {
-    fontSize: fontScale(12),
-    fontWeight: '600',
-    color: '#8E9BAE',
-  },
-  walletPillTextActive: {
-    color: '#FFFFFF',
-  },
-  walletAddPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#161B26',
-    borderWidth: 1,
-    borderColor: '#222836',
-    borderRadius: Radius.full,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: moderateScale(7),
-    gap: moderateScale(4),
-  },
-  walletAddPillText: {
-    fontSize: fontScale(12),
-    fontWeight: '600',
-    color: '#00E5FF',
+  scrollContent: {
+    paddingHorizontal: Spacing.md,
+    paddingBottom: moderateScale(90),
+    gap: Spacing.md,
   },
 
-  // 3. Stats Cards Row
-  statsCardsRow: {
-    flexDirection: 'row',
-    gap: Spacing.md,
-    marginTop: Spacing.lg,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: '#151922',
-    borderWidth: 1,
-    borderColor: '#202736',
-    borderRadius: Radius.lg,
+  /* 1. BALANCE CARD */
+  balanceCard: {
+    borderRadius: Radius.xl,
     padding: Spacing.md,
+    borderWidth: 1,
+    overflow: 'hidden',
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.35,
+    shadowRadius: 20,
+    elevation: 4,
   },
-  statCardHeader: {
+  glowTopRight: {
+    position: 'absolute',
+    top: -moderateScale(40),
+    right: -moderateScale(40),
+    width: moderateScale(140),
+    height: moderateScale(140),
+    borderRadius: Radius.full,
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+  },
+  glowBottomLeft: {
+    position: 'absolute',
+    bottom: -moderateScale(40),
+    left: -moderateScale(40),
+    width: moderateScale(120),
+    height: moderateScale(120),
+    borderRadius: Radius.full,
+    backgroundColor: 'rgba(99, 102, 241, 0.1)',
+  },
+  balanceSubHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.xs,
+  },
+  balanceLabelGroup: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.xs,
-    marginBottom: Spacing.sm,
   },
-  incomeIconBadge: {
-    width: moderateScale(28),
-    height: moderateScale(28),
-    borderRadius: Radius.full,
-    backgroundColor: 'rgba(0, 229, 255, 0.15)',
+  balanceCardLabel: {
+    fontSize: fontScale(11),
+    fontWeight: '700',
+    letterSpacing: 0.8,
+  },
+  eyeBtn: {
+    padding: moderateScale(4),
+  },
+  periodPill: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-  },
-  expenseIconBadge: {
-    width: moderateScale(28),
-    height: moderateScale(28),
+    gap: moderateScale(4),
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: moderateScale(4),
     borderRadius: Radius.full,
-    backgroundColor: 'rgba(139, 92, 246, 0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  statCardLabel: {
-    fontSize: fontScale(13),
+  periodPillText: {
+    fontSize: fontScale(11),
     fontWeight: '600',
-    color: '#8E9BAE',
   },
-  statCardValue: {
-    fontSize: fontScale(19),
+  balanceAmountText: {
+    fontSize: fontScale(30),
     fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: -0.5,
+    letterSpacing: -0.8,
+    marginVertical: moderateScale(3),
   },
-
-  // 4. Period & Chart Card
-  chartCard: {
-    backgroundColor: '#151922',
-    borderWidth: 1,
-    borderColor: '#202736',
-    borderRadius: Radius.xl,
-    padding: Spacing.lg,
-    marginTop: Spacing.lg,
+  momRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginBottom: Spacing.md,
   },
-  periodNavRow: {
+  momBadge: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: moderateScale(2),
+    borderRadius: Radius.full,
+  },
+  momBadgeText: {
+    color: '#10B981',
+    fontSize: fontScale(11),
+    fontWeight: '700',
+  },
+  momSubtext: {
+    fontSize: fontScale(11),
+  },
+  safeToSpendBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: Spacing.md,
+    padding: Spacing.sm,
+    borderRadius: Radius.lg,
   },
-  navArrowBtn: {
-    width: moderateScale(32),
-    height: moderateScale(32),
+  safeLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  shieldCircle: {
+    width: moderateScale(24),
+    height: moderateScale(24),
     borderRadius: Radius.full,
-    backgroundColor: '#1E2533',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  navArrowBtnDisabled: {
-    opacity: 0.4,
+  safeLabel: {
+    fontSize: fontScale(12),
+    fontWeight: '600',
   },
-  periodCenterCol: {
-    alignItems: 'center',
-  },
-  periodTitle: {
-    fontSize: fontScale(15),
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  periodStatusRow: {
+  safeRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: moderateScale(5),
+    gap: Spacing.xs,
+  },
+  safeAmount: {
+    fontSize: fontScale(13),
+    fontWeight: '700',
+  },
+  optimalBadge: {
+    paddingHorizontal: moderateScale(6),
+    paddingVertical: moderateScale(2),
+    borderRadius: Radius.full,
+  },
+  optimalText: {
+    color: '#10B981',
+    fontSize: fontScale(10),
+    fontWeight: '700',
+  },
+
+  /* 2. SPLIT CARDS */
+  splitCardsRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  splitCard: {
+    flex: 1,
+    borderRadius: Radius.xl,
+    padding: Spacing.md,
+    borderWidth: 1,
+  },
+  splitCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.xs,
+  },
+  splitIconCircle: {
+    width: moderateScale(32),
+    height: moderateScale(32),
+    borderRadius: Radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statChangeBadge: {
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: moderateScale(2),
+    borderRadius: Radius.full,
+  },
+  statChangeText: {
+    fontSize: fontScale(10),
+    fontWeight: '700',
+  },
+  splitCardLabel: {
+    fontSize: fontScale(10),
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    marginTop: Spacing.xs,
+  },
+  splitCardValue: {
+    fontSize: fontScale(16),
+    fontWeight: '800',
     marginTop: moderateScale(2),
   },
-  statusDot: {
+
+  /* 3. ACTIVITY SECTION */
+  activitySection: {
+    borderRadius: Radius.xl,
+    padding: Spacing.lg,
+    borderWidth: 1,
+  },
+  activityHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: Spacing.xs,
+  },
+  sectionTitle: {
+    fontSize: fontScale(16),
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  activitySub: {
+    fontSize: fontScale(12),
+    marginTop: moderateScale(2),
+  },
+  cycleToggleWrap: {
+    flexDirection: 'row',
+    borderRadius: Radius.full,
+    padding: moderateScale(2),
+  },
+  cycleBtn: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: moderateScale(4),
+    borderRadius: Radius.full,
+  },
+  cycleBtnActive: {
+    backgroundColor: '#10B981',
+  },
+  cycleText: {
+    fontSize: fontScale(10),
+    fontWeight: '700',
+  },
+  peakTooltipRow: {
+    height: moderateScale(24),
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+    paddingRight: moderateScale(36),
+    marginVertical: moderateScale(4),
+  },
+  peakBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: moderateScale(4),
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: moderateScale(3),
+    borderRadius: Radius.md,
+  },
+  peakDot: {
     width: moderateScale(6),
     height: moderateScale(6),
     borderRadius: Radius.full,
   },
-  statusText: {
+  peakText: {
     fontSize: fontScale(11),
-    fontWeight: '600',
+    fontWeight: '700',
   },
-
-  // Segmented toggle
-  segmentedToggle: {
-    flexDirection: 'row',
-    backgroundColor: '#0F131C',
-    borderRadius: Radius.full,
-    padding: moderateScale(3),
-    marginBottom: Spacing.lg,
-  },
-  toggleTab: {
-    flex: 1,
-    paddingVertical: moderateScale(8),
-    alignItems: 'center',
-    borderRadius: Radius.full,
-  },
-  toggleTabActive: {
-    backgroundColor: '#00E5FF',
-  },
-  toggleTabText: {
-    fontSize: fontScale(13),
-    fontWeight: '600',
-    color: '#8E9BAE',
-  },
-  toggleTabTextActive: {
-    color: '#0B0E14',
-    fontWeight: '800',
-  },
-
-  // Chart
-  chartContainer: {
-    height: moderateScale(180),
-    position: 'relative',
-    marginTop: Spacing.xs,
-  },
-  chartGridOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: moderateScale(25),
-    justifyContent: 'space-between',
-  },
-  gridLineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
-  yAxisLabel: {
-    fontSize: fontScale(9),
-    color: '#5A677B',
-    width: moderateScale(26),
-    textAlign: 'right',
-  },
-  gridLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#1C2331',
-  },
-  barsContainer: {
-    flex: 1,
+  chartBarsContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
-    paddingLeft: moderateScale(34),
-    paddingBottom: moderateScale(25),
-  },
-  barGroup: {
-    flex: 1,
-    alignItems: 'center',
-    height: '100%',
-    justifyContent: 'flex-end',
-    position: 'relative',
-  },
-  barTooltip: {
-    position: 'absolute',
-    top: -moderateScale(28),
-    backgroundColor: '#1E2533',
+    height: moderateScale(110),
     paddingHorizontal: Spacing.xs,
-    paddingVertical: moderateScale(3),
-    borderRadius: Radius.sm,
-    borderWidth: 1,
-    borderColor: '#00E5FF',
-    zIndex: 10,
   },
-  barTooltipText: {
-    fontSize: fontScale(10),
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
-  barColumnsRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: moderateScale(3),
-  },
-  bar: {
-    width: moderateScale(7),
-    borderTopLeftRadius: moderateScale(3),
-    borderTopRightRadius: moderateScale(3),
-  },
-  barPlaceholderDot: {
-    width: moderateScale(4),
-    height: moderateScale(4),
-    borderRadius: Radius.full,
-    backgroundColor: '#232A38',
-    marginBottom: moderateScale(4),
-  },
-  xAxisLabel: {
-    position: 'absolute',
-    bottom: -moderateScale(20),
-    fontSize: fontScale(11),
-    fontWeight: '600',
-    color: '#64748B',
-  },
-  xAxisLabelSelected: {
-    color: '#00E5FF',
-    fontWeight: '700',
-  },
-
-  // 5. Recent Transactions Feed
-  recentSection: {
-    marginTop: Spacing.xl,
-  },
-  recentHeaderRow: {
-    flexDirection: 'row',
+  chartCol: {
+    flex: 1,
+    height: '100%',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.md,
+    justifyContent: 'flex-end',
+    gap: moderateScale(6),
   },
-  recentSectionTitle: {
-    fontSize: fontScale(18),
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: -0.3,
+  barTrack: {
+    width: moderateScale(18),
+    height: '80%',
+    justifyContent: 'flex-end',
   },
-  viewAllRow: {
+  barFill: {
+    width: '100%',
+    borderTopLeftRadius: Radius.sm,
+    borderTopRightRadius: Radius.sm,
+  },
+  barLabel: {
+    fontSize: fontScale(11),
+  },
+  allocationPillsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+    marginTop: Spacing.md,
+    paddingTop: Spacing.xs,
+  },
+  allocPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: moderateScale(4),
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: moderateScale(4),
+    borderRadius: Radius.full,
   },
-  viewAllText: {
-    fontSize: fontScale(13),
-    fontWeight: '700',
-    color: '#00E5FF',
+  allocDot: {
+    width: moderateScale(6),
+    height: moderateScale(6),
+    borderRadius: Radius.full,
   },
-  emptyFeedBox: {
-    padding: Spacing.xl,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#151922',
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: '#202736',
-    gap: Spacing.xs,
-  },
-  emptyFeedText: {
-    fontSize: fontScale(14),
+  allocText: {
+    fontSize: fontScale(10),
     fontWeight: '600',
-    color: '#8E9BAE',
+  },
+
+  /* 4. TRANSACTIONS SECTION */
+  transactionsSection: {
+    gap: Spacing.sm,
+  },
+  txHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  seeAllText: {
+    fontSize: fontScale(11),
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+  filterPillsScroll: {
+    gap: Spacing.xs,
+    paddingVertical: Spacing.xs,
+  },
+  categoryFilterBtn: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: moderateScale(6),
+    borderRadius: Radius.full,
+  },
+  categoryFilterText: {
+    fontSize: fontScale(11),
+  },
+  dateGroupContainer: {
+    gap: Spacing.xs,
     marginTop: Spacing.xs,
   },
-  emptyFeedSub: {
-    fontSize: fontScale(12),
-    color: '#5A677B',
-    textAlign: 'center',
+  dateGroupTitle: {
+    fontSize: fontScale(10),
+    fontWeight: '700',
+    letterSpacing: 1,
+    paddingHorizontal: Spacing.xs,
+  },
+  dateGroupCards: {
+    gap: Spacing.xs,
   },
   transactionCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#151922',
-    borderWidth: 1,
-    borderColor: '#202736',
+    justifyContent: 'space-between',
+    padding: Spacing.sm,
     borderRadius: Radius.lg,
-    marginBottom: Spacing.sm,
-    paddingVertical: moderateScale(12),
-    paddingRight: Spacing.md,
-    overflow: 'hidden',
-    position: 'relative',
+    borderWidth: 1,
   },
-  txAccentStripe: {
-    width: moderateScale(4),
-    height: '100%',
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
+  txLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    flex: 1,
   },
-  txIconBox: {
-    width: moderateScale(42),
-    height: moderateScale(42),
+  txIconSquircle: {
+    width: moderateScale(38),
+    height: moderateScale(38),
     borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: Spacing.md,
-    marginRight: Spacing.sm,
   },
-  txInfoCol: {
+  txDetails: {
     flex: 1,
+  },
+  txTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
   },
   txTitle: {
-    fontSize: fontScale(15),
-    fontWeight: '600',
-    color: '#FFFFFF',
+    fontSize: fontScale(13),
+    fontWeight: '700',
+    maxWidth: '65%',
   },
-  txMeta: {
-    fontSize: fontScale(12),
-    color: '#8E9BAE',
+  txCategoryTag: {
+    paddingHorizontal: moderateScale(6),
+    paddingVertical: moderateScale(1),
+    borderRadius: Radius.sm,
+  },
+  txCategoryTagText: {
+    fontSize: fontScale(9),
+    fontWeight: '700',
+  },
+  txSubtext: {
+    fontSize: fontScale(10),
     marginTop: moderateScale(2),
   },
-  txAmountCol: {
-    alignItems: 'flex-end',
+  txAmount: {
+    fontSize: fontScale(14),
+    fontWeight: '700',
   },
-  txAmountText: {
+  emptyContainer: {
+    padding: Spacing.xl,
+    borderRadius: Radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTitle: {
+    fontSize: fontScale(14),
+    fontWeight: '700',
+  },
+  emptySubtitle: {
+    fontSize: fontScale(11),
+    marginTop: moderateScale(4),
+  },
+
+  /* 5. FLOATING QUICK ACTION BUTTON */
+  floatingActionContainer: {
+    position: 'absolute',
+    bottom: moderateScale(16),
+    right: Spacing.md,
+    zIndex: 40,
+  },
+  quickAddFab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: moderateScale(6),
+    paddingHorizontal: Spacing.md,
+    paddingVertical: moderateScale(10),
+    borderRadius: Radius.full,
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  quickAddFabText: {
+    color: '#003824',
+    fontSize: fontScale(11),
+    fontWeight: '800',
+    letterSpacing: 0.6,
+  },
+
+  /* 6. DRAWER MODAL */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    borderTopLeftRadius: Radius.xl,
+    borderTopRightRadius: Radius.xl,
+    padding: Spacing.lg,
+    paddingBottom: Platform.OS === 'ios' ? moderateScale(38) : Spacing.xl,
+    gap: Spacing.md,
+  },
+  sheetHandle: {
+    width: moderateScale(40),
+    height: moderateScale(4),
+    borderRadius: Radius.full,
+    backgroundColor: '#86948A',
+    alignSelf: 'center',
+    marginBottom: Spacing.xs,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  sheetTitle: {
+    fontSize: fontScale(16),
+    fontWeight: '800',
+  },
+  sheetSub: {
+    fontSize: fontScale(12),
+    marginTop: moderateScale(2),
+  },
+  closeBtn: {
+    width: moderateScale(30),
+    height: moderateScale(30),
+    borderRadius: Radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  currencyInputBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.md,
+    borderRadius: Radius.lg,
+    gap: Spacing.xs,
+  },
+  currencySymbol: {
+    fontSize: fontScale(30),
+    fontWeight: '800',
+  },
+  currencyInput: {
+    fontSize: fontScale(32),
+    fontWeight: '800',
+    minWidth: moderateScale(120),
+    textAlign: 'center',
+  },
+  quickCategoryGrid: {
+    flexDirection: 'row',
+    gap: Spacing.xs,
+  },
+  quickCategoryRow: {
+    gap: Spacing.xs,
+    paddingVertical: moderateScale(4),
+  },
+  quickEmptyWrap: {
+    alignItems: 'center',
+    paddingVertical: Spacing.md,
+    gap: Spacing.xs,
+  },
+  quickEmptyText: {
+    fontSize: fontScale(12),
+  },
+  quickAddCategoryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: moderateScale(4),
+    paddingHorizontal: Spacing.md,
+    paddingVertical: moderateScale(8),
+    borderRadius: Radius.full,
+  },
+  quickAddCategoryBtnText: {
+    fontSize: fontScale(12),
+    fontWeight: '700',
+  },
+  quickCatBtn: {
+    minWidth: moderateScale(72),
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: Radius.md,
+    gap: moderateScale(4),
+  },
+  quickCatText: {
+    fontSize: fontScale(11),
+    fontWeight: '600',
+  },
+  confirmRecordBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+    paddingVertical: moderateScale(14),
+    borderRadius: Radius.lg,
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  confirmRecordText: {
+    color: '#003824',
     fontSize: fontScale(15),
     fontWeight: '700',
-    letterSpacing: -0.3,
-  },
-
-  // 6. FAB
-  fab: {
-    position: 'absolute',
-    bottom: Platform.OS === 'ios' ? moderateScale(22) : moderateScale(14),
-    alignSelf: 'center',
-    width: moderateScale(56),
-    height: moderateScale(56),
-    borderRadius: moderateScale(28),
-    backgroundColor: '#00E5FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 8,
-    shadowColor: '#00E5FF',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    zIndex: 99,
-  },
-
-  // Modal
-  previewOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.92)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: Spacing.lg,
-  },
-  closePreviewBtn: {
-    position: 'absolute',
-    top: moderateScale(48),
-    right: moderateScale(24),
-    zIndex: 10,
-    padding: Spacing.xs,
-  },
-  fullScreenImage: {
-    width: '100%',
-    height: '80%',
   },
 });

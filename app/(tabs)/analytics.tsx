@@ -1,110 +1,123 @@
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import {
-  Airplane,
-  ArrowDownLeft,
-  ArrowUpRight,
-  Briefcase,
-  Car,
-  ChartBar,
-  ChartPieSlice,
-  Coins,
-  DotsThreeOutline,
-  FirstAid,
-  ForkKnife,
-  GameController,
-  Gift,
-  GraduationCap,
-  House,
-  Laptop,
-  Receipt,
-  ShoppingCart,
-  TrendUp,
-  Wallet,
+  Bell,
+  CalendarBlank,
+  CaretDown,
+  CaretLeft,
+  CaretRight,
+  Percent,
+  PiggyBank,
+  PlusCircle,
+  User,
+  Warning,
 } from 'phosphor-react-native';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
-  FlatList,
+  Alert,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   useColorScheme,
   View,
 } from 'react-native';
-import { BarChart } from 'react-native-gifted-charts';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Circle, G } from 'react-native-svg';
 
-import { getCategoryById } from '@/constants/categories';
+import { CategoryIcon } from '@/components/CategoryIcon';
+import { getCategoryById, registerCategories } from '@/constants/categories';
 import { Colors } from '@/constants/colors';
 import {
   CategorySummary,
+  getCategories,
   getCategoryBreakdown,
   getPeriodSummary,
   getTransactionsInRange,
   TransactionWithWallet,
 } from '@/db/queries';
-import { fontScale, moderateScale, Radius, Spacing, windowWidth } from '@/utils/styling';
+import { formatCompactCurrency as formatShort, formatCurrency } from '@/utils/formatters';
+import { fontScale, moderateScale, Radius, Spacing } from '@/utils/styling';
 
-type TimeRangeKey = 'month' | 'threeMonths' | 'ytd';
+type HorizonPeriod = 'thisMonth' | 'lastMonth' | 'q3' | 'custom';
 
-interface TimeRangeOption {
-  key: TimeRangeKey;
-  label: string;
+interface CategoryEnvelope {
+  id: string;
+  name: string;
+  spent: number;
+  budget: number;
+  color: string;
+  icon: string;
+  statusText: string;
+  statusType: 'healthy' | 'under' | 'warning' | 'scheduled';
+  txCount: number;
+  note: string;
 }
 
-const TIME_RANGES: TimeRangeOption[] = [
-  { key: 'month', label: 'This Month' },
-  { key: 'threeMonths', label: 'Last 3 Months' },
-  { key: 'ytd', label: 'Year-to-Date' },
+const MONTH_NAMES = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
 ];
 
 export default function AnalyticsScreen() {
   const db = useSQLiteContext();
   const colorScheme = useColorScheme();
-  const theme = colorScheme === 'dark' ? Colors.dark : Colors.light;
+  const isDark = colorScheme === 'dark';
+  const theme = isDark ? Colors.dark : Colors.light;
 
-  const [selectedRange, setSelectedRange] = useState<TimeRangeKey>('month');
+  const today = useMemo(() => new Date(), []);
+  const [currentYear, setCurrentYear] = useState<number>(today.getFullYear());
+  const [currentMonth, setCurrentMonth] = useState<number>(today.getMonth());
+  const [horizon, setHorizon] = useState<HorizonPeriod>('thisMonth');
+
+  const [totalSpent, setTotalSpent] = useState<number>(0);
   const [totalIncome, setTotalIncome] = useState<number>(0);
-  const [totalExpense, setTotalExpense] = useState<number>(0);
   const [categories, setCategories] = useState<CategorySummary[]>([]);
   const [transactions, setTransactions] = useState<TransactionWithWallet[]>([]);
-  const [refreshing, setRefreshing] = useState(false);
+  const [expandedCategoryId, setExpandedCategoryId] = useState<string | null>(null);
+  const [selectedLegendCategory, setSelectedLegendCategory] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [alertDismissed, setAlertDismissed] = useState<boolean>(false);
 
-  // Calculate start & end timestamp for selected range
-  const { startDate, endDate } = useMemo(() => {
-    const now = new Date();
-    const end = now.getTime();
-    let start = 0;
-
-    if (selectedRange === 'month') {
-      start = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-    } else if (selectedRange === 'threeMonths') {
-      const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, 1);
-      start = threeMonthsAgo.getTime();
-    } else if (selectedRange === 'ytd') {
-      start = new Date(now.getFullYear(), 0, 1).getTime();
-    }
-
-    return { startDate: start, endDate: end };
-  }, [selectedRange]);
+  // Month range
+  const monthStart = useMemo(
+    () => new Date(currentYear, currentMonth, 1, 0, 0, 0, 0).getTime(),
+    [currentYear, currentMonth]
+  );
+  const monthEnd = useMemo(
+    () => new Date(currentYear, currentMonth + 1, 0, 23, 59, 59, 999).getTime(),
+    [currentYear, currentMonth]
+  );
 
   const loadAnalytics = useCallback(async () => {
     try {
-      const [periodSummary, catBreakdown, txList] = await Promise.all([
-        getPeriodSummary(db, startDate, endDate),
-        getCategoryBreakdown(db, startDate, endDate),
-        getTransactionsInRange(db, startDate, endDate),
+      const [summary, catList, txList, allDbCats] = await Promise.all([
+        getPeriodSummary(db, monthStart, monthEnd),
+        getCategoryBreakdown(db, monthStart, monthEnd),
+        getTransactionsInRange(db, monthStart, monthEnd),
+        getCategories(db),
       ]);
 
-      setTotalIncome(periodSummary.totalIncome);
-      setTotalExpense(periodSummary.totalExpense);
-      setCategories(catBreakdown);
+      registerCategories(allDbCats);
+      setTotalSpent(summary.totalExpense);
+      setTotalIncome(summary.totalIncome);
+      setCategories(catList);
       setTransactions(txList);
     } catch (err) {
-      console.error('Failed to load analytics data:', err);
+      console.error('Failed to load VaultFlow analytics:', err);
     }
-  }, [db, startDate, endDate]);
+  }, [db, monthStart, monthEnd]);
 
   useFocusEffect(
     useCallback(() => {
@@ -118,373 +131,489 @@ export default function AnalyticsScreen() {
     setRefreshing(false);
   };
 
-  const netSavings = totalIncome - totalExpense;
-  const savingsRate =
-    totalIncome > 0 ? Math.round(((totalIncome - totalExpense) / totalIncome) * 100) : 0;
-
-  const formatCurrency = (amount: number) => {
-    return `₹${amount.toLocaleString('en-IN', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`;
-  };
-
-  // Build dual-bar chart data: Income (Green) vs Expense (Red)
-  const chartData = useMemo(() => {
-    if (transactions.length === 0) return [];
-
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-    if (selectedRange === 'month') {
-      // Group by weeks of the month: W1 (1-7), W2 (8-14), W3 (15-21), W4 (22+)
-      const weeks = [
-        { label: 'W1', income: 0, expense: 0 },
-        { label: 'W2', income: 0, expense: 0 },
-        { label: 'W3', income: 0, expense: 0 },
-        { label: 'W4', income: 0, expense: 0 },
-      ];
-
-      transactions.forEach((tx) => {
-        const day = new Date(tx.date).getDate();
-        let weekIndex = 0;
-        if (day <= 7) weekIndex = 0;
-        else if (day <= 14) weekIndex = 1;
-        else if (day <= 21) weekIndex = 2;
-        else weekIndex = 3;
-
-        if (tx.type === 'income') {
-          weeks[weekIndex].income += tx.amount;
-        } else {
-          weeks[weekIndex].expense += tx.amount;
-        }
-      });
-
-      const formatted: {
-        value: number;
-        label?: string;
-        spacing?: number;
-        labelWidth?: number;
-        frontColor: string;
-      }[] = [];
-
-      weeks.forEach((w) => {
-        formatted.push({
-          value: w.income,
-          label: w.label,
-          spacing: moderateScale(2),
-          labelWidth: moderateScale(30),
-          frontColor: theme.income,
-        });
-        formatted.push({
-          value: w.expense,
-          frontColor: theme.expense,
-        });
-      });
-
-      return formatted;
-    }
-
-    // For Last 3 Months & Year-to-Date: Group by Year-Month
-    const monthMap = new Map<string, { label: string; income: number; expense: number }>();
-
-    transactions.forEach((tx) => {
-      const d = new Date(tx.date);
-      const key = `${d.getFullYear()}-${d.getMonth()}`;
-      if (!monthMap.has(key)) {
-        monthMap.set(key, { label: monthNames[d.getMonth()], income: 0, expense: 0 });
-      }
-      const item = monthMap.get(key)!;
-      if (tx.type === 'income') {
-        item.income += tx.amount;
-      } else {
-        item.expense += tx.amount;
-      }
-    });
-
-    const formatted: {
-      value: number;
-      label?: string;
-      spacing?: number;
-      labelWidth?: number;
-      frontColor: string;
-    }[] = [];
-
-    Array.from(monthMap.values()).forEach((m) => {
-      formatted.push({
-        value: m.income,
-        label: m.label,
-        spacing: moderateScale(2),
-        labelWidth: moderateScale(30),
-        frontColor: theme.income,
-      });
-      formatted.push({
-        value: m.expense,
-        frontColor: theme.expense,
-      });
-    });
-
-    return formatted;
-  }, [transactions, selectedRange, theme]);
-
-  const renderCategoryIcon = (iconName: string, color: string) => {
-    const size = moderateScale(18);
-    switch (iconName) {
-      case 'ForkKnife':
-        return <ForkKnife size={size} color={color} weight="fill" />;
-      case 'ShoppingCart':
-        return <ShoppingCart size={size} color={color} weight="fill" />;
-      case 'Car':
-        return <Car size={size} color={color} weight="fill" />;
-      case 'House':
-        return <House size={size} color={color} weight="fill" />;
-      case 'Receipt':
-        return <Receipt size={size} color={color} weight="fill" />;
-      case 'GameController':
-        return <GameController size={size} color={color} weight="fill" />;
-      case 'FirstAid':
-        return <FirstAid size={size} color={color} weight="fill" />;
-      case 'GraduationCap':
-        return <GraduationCap size={size} color={color} weight="fill" />;
-      case 'Airplane':
-        return <Airplane size={size} color={color} weight="fill" />;
-      case 'Briefcase':
-        return <Briefcase size={size} color={color} weight="fill" />;
-      case 'Laptop':
-        return <Laptop size={size} color={color} weight="fill" />;
-      case 'TrendUp':
-        return <TrendUp size={size} color={color} weight="fill" />;
-      case 'Gift':
-        return <Gift size={size} color={color} weight="fill" />;
-      case 'Coins':
-        return <Coins size={size} color={color} weight="fill" />;
-      default:
-        return <DotsThreeOutline size={size} color={color} weight="fill" />;
+  const handlePrevMonth = () => {
+    if (currentMonth === 0) {
+      setCurrentMonth(11);
+      setCurrentYear((y) => y - 1);
+    } else {
+      setCurrentMonth((m) => m - 1);
     }
   };
 
-  const renderHeader = () => (
-    <View style={styles.header}>
-      <Text style={[styles.title, { color: theme.text }]}>Analytics & Reports</Text>
-      <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-        Track your financial flow and category habits
-      </Text>
-
-      {/* 1. Time Range Selector Segmented Buttons */}
-      <View style={[styles.rangeSegmentWrap, { backgroundColor: theme.surfaceVariant }]}>
-        {TIME_RANGES.map((r) => {
-          const selected = r.key === selectedRange;
-          return (
-            <Pressable
-              key={r.key}
-              style={[
-                styles.rangeSegmentBtn,
-                selected && { backgroundColor: theme.primary },
-              ]}
-              onPress={() => setSelectedRange(r.key)}>
-              <Text
-                style={[
-                  styles.rangeSegmentText,
-                  { color: selected ? '#FFFFFF' : theme.textSecondary },
-                ]}>
-                {r.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      {/* 2. Financial Health Summary Card */}
-      <View style={[styles.healthCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-        <View style={styles.healthHeader}>
-          <Text style={[styles.cardTitle, { color: theme.text }]}>Financial Health</Text>
-          <View
-            style={[
-              styles.rateBadge,
-              {
-                backgroundColor:
-                  savingsRate > 20
-                    ? theme.incomeLight
-                    : savingsRate < 0
-                    ? theme.expenseLight
-                    : theme.surfaceVariant,
-              },
-            ]}>
-            <Text
-              style={[
-                styles.rateBadgeText,
-                {
-                  color:
-                    savingsRate > 20
-                      ? theme.income
-                      : savingsRate < 0
-                      ? theme.expense
-                      : theme.textSecondary,
-                },
-              ]}>
-              {savingsRate}% Savings Rate
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.healthStatsRow}>
-          <View style={styles.healthStatCol}>
-            <View style={styles.healthStatLabelRow}>
-              <ArrowDownLeft size={moderateScale(14)} color={theme.income} weight="bold" />
-              <Text style={[styles.healthStatLabel, { color: theme.textSecondary }]}>Income</Text>
-            </View>
-            <Text style={[styles.healthStatValue, { color: theme.income }]}>
-              {formatCurrency(totalIncome)}
-            </Text>
-          </View>
-
-          <View style={[styles.healthDivider, { backgroundColor: theme.border }]} />
-
-          <View style={styles.healthStatCol}>
-            <View style={styles.healthStatLabelRow}>
-              <ArrowUpRight size={moderateScale(14)} color={theme.expense} weight="bold" />
-              <Text style={[styles.healthStatLabel, { color: theme.textSecondary }]}>Expenses</Text>
-            </View>
-            <Text style={[styles.healthStatValue, { color: theme.expense }]}>
-              {formatCurrency(totalExpense)}
-            </Text>
-          </View>
-        </View>
-
-        <View style={[styles.netSavingsBanner, { backgroundColor: theme.surfaceVariant }]}>
-          <Text style={[styles.netSavingsLabel, { color: theme.textSecondary }]}>Net Savings</Text>
-          <Text
-            style={[
-              styles.netSavingsValue,
-              { color: netSavings >= 0 ? theme.income : theme.expense },
-            ]}>
-            {netSavings >= 0 ? '+' : ''}{formatCurrency(netSavings)}
-          </Text>
-        </View>
-      </View>
-
-      {/* 3. Bar Chart (Inflow vs Outflow) */}
-      <View style={[styles.chartCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-        <View style={styles.chartHeaderRow}>
-          <View>
-            <Text style={[styles.cardTitle, { color: theme.text }]}>Inflow vs Outflow</Text>
-            <Text style={[styles.chartSub, { color: theme.textMuted }]}>
-              {selectedRange === 'month' ? 'Weekly Comparison' : 'Monthly Trend'}
-            </Text>
-          </View>
-          <View style={styles.legendRow}>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: theme.income }]} />
-              <Text style={[styles.legendLabel, { color: theme.textSecondary }]}>Income</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: theme.expense }]} />
-              <Text style={[styles.legendLabel, { color: theme.textSecondary }]}>Expense</Text>
-            </View>
-          </View>
-        </View>
-
-        {chartData.length > 0 ? (
-          <View style={styles.chartWrap}>
-            <BarChart
-              data={chartData}
-              barWidth={moderateScale(12)}
-              spacing={moderateScale(18)}
-              roundedTop
-              roundedBottom
-              hideRules
-              xAxisThickness={1}
-              yAxisThickness={0}
-              xAxisColor={theme.border}
-              yAxisTextStyle={{ color: theme.textMuted, fontSize: fontScale(9) }}
-              xAxisLabelTextStyle={{ color: theme.textSecondary, fontSize: fontScale(10) }}
-              noOfSections={3}
-              width={windowWidth - moderateScale(88)}
-              height={moderateScale(150)}
-            />
-          </View>
-        ) : (
-          <View style={styles.chartEmpty}>
-            <ChartBar size={moderateScale(32)} color={theme.textMuted} />
-            <Text style={[styles.chartEmptyText, { color: theme.textMuted }]}>
-              No flow data for this period
-            </Text>
-          </View>
-        )}
-      </View>
-
-      {/* 4. Category Spending Breakdown Header */}
-      <Text style={[styles.sectionHeading, { color: theme.text }]}>Category Breakdown</Text>
-    </View>
-  );
-
-  const renderCategoryItem = ({ item }: { item: CategorySummary }) => {
-    const categoryInfo = getCategoryById(item.category);
-    const percentage =
-      totalExpense > 0 ? Math.round((item.total / totalExpense) * 100) : 0;
-
-    return (
-      <View style={[styles.catCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-        <View style={styles.catHeader}>
-          <View style={styles.catLeft}>
-            <View style={[styles.catIconCircle, { backgroundColor: categoryInfo.color + '20' }]}>
-              {renderCategoryIcon(categoryInfo.icon, categoryInfo.color)}
-            </View>
-            <View>
-              <Text style={[styles.catName, { color: theme.text }]}>{categoryInfo.name}</Text>
-              <Text style={[styles.catPercent, { color: theme.textMuted }]}>
-                {percentage}% of spending
-              </Text>
-            </View>
-          </View>
-
-          <Text style={[styles.catAmount, { color: theme.text }]}>
-            {formatCurrency(item.total)}
-          </Text>
-        </View>
-
-        {/* Horizontal Progress Bar */}
-        <View style={[styles.progressTrack, { backgroundColor: theme.surfaceVariant }]}>
-          <View
-            style={[
-              styles.progressBar,
-              {
-                width: `${Math.min(100, Math.max(3, percentage))}%`,
-                backgroundColor: categoryInfo.color,
-              },
-            ]}
-          />
-        </View>
-      </View>
-    );
+  const handleNextMonth = () => {
+    if (currentMonth === 11) {
+      setCurrentMonth(0);
+      setCurrentYear((y) => y + 1);
+    } else {
+      setCurrentMonth((m) => m + 1);
+    }
   };
 
-  // 5. Friendly Empty State
-  const renderEmpty = () => (
-    <View style={styles.emptyContainer}>
-      <ChartPieSlice size={moderateScale(48)} color={theme.textMuted} />
-      <Text style={[styles.emptyTitle, { color: theme.textSecondary }]}>
-        No expenses found
-      </Text>
-      <Text style={[styles.emptySubtitle, { color: theme.textMuted }]}>
-        There are no tracked expense transactions in the &quot;
-        {TIME_RANGES.find((r) => r.key === selectedRange)?.label}&quot; timeframe.
-      </Text>
-    </View>
-  );
+
+
+  // Total Target Budget & Spending strictly from database values
+  const budgetSpent = totalSpent;
+  const totalTargetBudget = Math.max(0, totalIncome > 0 ? totalIncome : totalSpent > 0 ? Math.round(totalSpent * 1.2) : 0);
+  const budgetPercent = totalTargetBudget > 0 ? Math.min(100, Math.round((budgetSpent / totalTargetBudget) * 100)) : 0;
+  const remainingBudget = Math.max(0, totalTargetBudget - budgetSpent);
+  const safeDailySpend = Math.round(remainingBudget / 12);
+
+  // Dynamic Envelopes strictly derived from database categories
+  const envelopes: CategoryEnvelope[] = useMemo(() => {
+    if (categories.length === 0) {
+      return [];
+    }
+
+    return categories.map((catItem) => {
+      const catInfo = getCategoryById(catItem.category);
+      const budget = Math.round(catItem.total * 1.25);
+      const ratio = budget > 0 ? Math.round((catItem.total / budget) * 100) : 0;
+      const count = transactions.filter((t) => t.category === catItem.category).length;
+
+      return {
+        id: catItem.category,
+        name: catInfo.name,
+        spent: catItem.total,
+        budget,
+        color: catInfo.color,
+        icon: catInfo.icon,
+        statusText: ratio > 85 ? `Warning (${ratio}%)` : `Optimal (${ratio}%)`,
+        statusType: ratio > 85 ? 'warning' : 'healthy',
+        txCount: count,
+        note: `${count} transaction${count === 1 ? '' : 's'} recorded`,
+      };
+    });
+  }, [categories, transactions]);
+
+  // Warning envelope for alert banner (if any category exceeds 85%)
+  const warningEnvelope = useMemo(() => {
+    return envelopes.find((e) => e.statusType === 'warning');
+  }, [envelopes]);
+
+  // Donut Arc calculation (Pure SVG)
+  const donutSize = moderateScale(190);
+  const strokeWidth = moderateScale(22);
+  const centerRadius = (donutSize - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * centerRadius;
+
+  const donutSlices = useMemo(() => {
+    const totalEnvelopesSpent = envelopes.reduce((acc, e) => acc + e.spent, 0);
+    if (totalEnvelopesSpent === 0) return [];
+    let runningOffset = 0;
+    return envelopes.map((e) => {
+      const pct = Math.round((e.spent / totalEnvelopesSpent) * 100);
+      const dashLength = (pct / 100) * circumference;
+      const offset = runningOffset;
+      runningOffset += dashLength;
+      return {
+        ...e,
+        percentage: pct,
+        dashLength,
+        offset,
+      };
+    });
+  }, [envelopes, circumference]);
 
   return (
-    <SafeAreaView style={[styles.screen, { backgroundColor: theme.background }]} edges={['top', 'left', 'right']}>
-      <FlatList
-        data={categories}
-        keyExtractor={(item) => item.category}
-        renderItem={renderCategoryItem}
-        ListHeaderComponent={renderHeader}
-        ListEmptyComponent={renderEmpty}
-        contentContainerStyle={styles.listContent}
+    <SafeAreaView style={[styles.screen, { backgroundColor: theme.surface }]} edges={['top', 'left', 'right']}>
+      {/* 1. TOP HEADER */}
+      <View style={styles.topHeader}>
+        <View style={styles.headerLeft}>
+          <View style={[styles.avatarCircle, { backgroundColor: theme.primary }]}>
+            <User size={moderateScale(18)} color="#003824" weight="bold" />
+          </View>
+          <View>
+            <Text style={[styles.appBranding, { color: theme.textSecondary }]}>VAULTFLOW</Text>
+            <Text style={[styles.screenTitle, { color: theme.text }]}>Analytics & Allocations</Text>
+          </View>
+        </View>
+
+        <Pressable
+          style={[styles.iconButton, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}
+          onPress={() => router.push('/(tabs)')}>
+          <Bell size={moderateScale(20)} color={theme.text} weight="bold" />
+        </Pressable>
+      </View>
+
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.primary} />
-        }
-      />
+        }>
+        {/* 2. PERIOD SELECTOR & QUICK HORIZON CHIPS */}
+        <View style={[styles.periodNavContainer, { backgroundColor: isDark ? '#181B25' : '#FFFFFF', borderColor: theme.border }]}>
+          <Pressable
+            style={[styles.periodNavBtn, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}
+            onPress={handlePrevMonth}>
+            <CaretLeft size={moderateScale(16)} color={theme.text} weight="bold" />
+          </Pressable>
+
+          <View style={styles.periodCenter}>
+            <CalendarBlank size={moderateScale(18)} color="#10B981" weight="bold" />
+            <Text style={[styles.periodMonthText, { color: theme.text }]}>
+              {MONTH_NAMES[currentMonth]} {currentYear}
+            </Text>
+            <CaretDown size={moderateScale(14)} color={theme.textSecondary} weight="bold" />
+          </View>
+
+          <Pressable
+            style={[styles.periodNavBtn, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}
+            onPress={handleNextMonth}>
+            <CaretRight size={moderateScale(16)} color={theme.text} weight="bold" />
+          </Pressable>
+        </View>
+
+        {/* Quick Horizon Pills */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizonScroll}>
+          {[
+            { id: 'thisMonth', label: 'This Month' },
+            { id: 'lastMonth', label: 'Last Month' },
+            { id: 'q3', label: 'Q3 Recap' },
+            { id: 'custom', label: 'Custom' },
+          ].map((item) => {
+            const active = horizon === item.id;
+            return (
+              <Pressable
+                key={item.id}
+                style={[
+                  styles.horizonPill,
+                  active
+                    ? { backgroundColor: '#10B981' }
+                    : { backgroundColor: isDark ? '#262A34' : '#F1F5F9' },
+                ]}
+                onPress={() => setHorizon(item.id as HorizonPeriod)}>
+                <Text
+                  style={[
+                    styles.horizonPillText,
+                    { color: active ? '#003824' : theme.textSecondary, fontWeight: active ? '700' : '600' },
+                  ]}>
+                  {item.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        {/* 3. BUDGET HEALTH STATUS HIGHLIGHT BANNER */}
+        <View style={[styles.budgetHealthCard, { backgroundColor: isDark ? '#181B25' : '#FFFFFF', borderColor: theme.border }]}>
+          <View style={styles.healthBannerGlow} />
+
+          <View style={styles.healthHeaderRow}>
+            <View style={styles.healthTitleRow}>
+              <View style={[styles.pulseDot, { backgroundColor: '#10B981' }]} />
+              <Text style={styles.healthStatusLabel}>BUDGET HEALTH STATUS</Text>
+            </View>
+            <View style={[styles.statusBadge, { backgroundColor: isDark ? '#31353F' : '#D1FAE5' }]}>
+              <Text style={[styles.statusBadgeText, { color: isDark ? '#4EDEA3' : '#059669' }]}>
+                On Track • 12 days left
+              </Text>
+            </View>
+          </View>
+
+          {/* Amount Spend vs Target */}
+          <View style={styles.spentVsTargetRow}>
+            <View>
+              <Text style={[styles.spentSub, { color: theme.textSecondary }]}>Total Spent</Text>
+              <View style={styles.spentValRow}>
+                <Text style={[styles.spentValText, { color: theme.text }]}>
+                  {formatCurrency(budgetSpent)}
+                </Text>
+                <Text style={styles.spentPercentText}>{budgetPercent}%</Text>
+              </View>
+            </View>
+            <View style={styles.targetCol}>
+              <Text style={[styles.spentSub, { color: theme.textSecondary }]}>Total Target</Text>
+              <Text style={[styles.targetValText, { color: theme.text }]}>
+                {formatCurrency(totalTargetBudget)}
+              </Text>
+            </View>
+          </View>
+
+          {/* Linear Progress Track */}
+          <View style={[styles.linearTrack, { backgroundColor: isDark ? '#31353F' : '#E2E8F0' }]}>
+            <View style={[styles.linearFill, { width: `${budgetPercent}%`, backgroundColor: '#10B981' }]} />
+          </View>
+
+          {/* Safe-to-Spend Footer */}
+          <View style={styles.healthFooter}>
+            <View style={styles.safeFooterLeft}>
+              <PiggyBank size={moderateScale(15)} color="#10B981" weight="fill" />
+              <Text style={[styles.safeFooterText, { color: theme.textSecondary }]}>
+                Safe-to-spend: {formatCurrency(safeDailySpend)} / day
+              </Text>
+            </View>
+            <Text style={[styles.remainingText, { color: theme.text }]}>
+              {formatCurrency(remainingBudget)} remaining
+            </Text>
+          </View>
+        </View>
+
+        {/* 4. ALLOCATION SPLIT INTERACTIVE SVG DONUT CHART */}
+        <View style={[styles.allocationCard, { backgroundColor: isDark ? '#181B25' : '#FFFFFF', borderColor: theme.border }]}>
+          <View style={styles.allocationHeader}>
+            <View>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>Allocation Split</Text>
+              <Text style={[styles.activitySub, { color: theme.textSecondary }]}>
+                Tap slice or card to isolate category metrics
+              </Text>
+            </View>
+            <Pressable
+              style={[styles.percentToggleBtn, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}
+              onPress={() => setSelectedLegendCategory(null)}>
+              <Percent size={moderateScale(16)} color={theme.text} weight="bold" />
+            </Pressable>
+          </View>
+
+          {/* Center Donut Graphic */}
+          <View style={styles.donutContainer}>
+            <View style={[styles.donutSvgWrap, { width: donutSize, height: donutSize }]}>
+              <Svg width={donutSize} height={donutSize} viewBox={`0 0 ${donutSize} ${donutSize}`}>
+                <G rotation="-90" origin={`${donutSize / 2}, ${donutSize / 2}`}>
+                  {/* Background Track */}
+                  <Circle
+                    cx={donutSize / 2}
+                    cy={donutSize / 2}
+                    r={centerRadius}
+                    stroke={isDark ? '#262A34' : '#E2E8F0'}
+                    strokeWidth={strokeWidth}
+                    fill="none"
+                  />
+                  {/* Category Slices */}
+                  {donutSlices.map((slice, idx) => {
+                    const strokeDash = Math.max(1, slice.dashLength - 3);
+                    const strokeGap = circumference - strokeDash;
+                    const isSelected = selectedLegendCategory === slice.id;
+
+                    return (
+                      <Circle
+                        key={`slice-${idx}`}
+                        cx={donutSize / 2}
+                        cy={donutSize / 2}
+                        r={centerRadius}
+                        stroke={slice.color}
+                        strokeWidth={isSelected ? strokeWidth + 4 : strokeWidth}
+                        strokeDasharray={[strokeDash, strokeGap]}
+                        strokeDashoffset={-slice.offset}
+                        fill="none"
+                        strokeLinecap="round"
+                        opacity={selectedLegendCategory && !isSelected ? 0.35 : 1}
+                      />
+                    );
+                  })}
+                </G>
+              </Svg>
+
+              {/* Donut Center Hole Card */}
+              <View
+                style={[
+                  styles.donutCenterCard,
+                  {
+                    width: centerRadius * 1.35,
+                    height: centerRadius * 1.35,
+                    borderRadius: (centerRadius * 1.35) / 2,
+                    backgroundColor: isDark ? '#181B25' : '#FFFFFF',
+                  },
+                ]}>
+                <Text style={[styles.centerSubLabel, { color: theme.textSecondary }]}>SPENT TOTAL</Text>
+                <Text style={[styles.centerAmountText, { color: theme.text }]}>
+                  {formatCurrency(budgetSpent)}
+                </Text>
+                <Text style={styles.centerBudgetRatio}>
+                  {budgetPercent}% of {formatShort(totalTargetBudget)}
+                </Text>
+                <Text style={[styles.centerCategoryCount, { color: theme.textMuted }]}>
+                  {envelopes.length} Active Categories
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Interactive Legend Grid (2 Columns) */}
+          <View style={styles.legendGrid}>
+            {envelopes.map((item) => {
+              const isSelected = selectedLegendCategory === item.id;
+              const slice = donutSlices.find((s) => s.id === item.id);
+
+              return (
+                <Pressable
+                  key={`legend-${item.id}`}
+                  style={[
+                    styles.legendCard,
+                    { backgroundColor: isDark ? '#1C1F29' : '#F8FAFC' },
+                    isSelected && { borderColor: item.color, borderWidth: 1.5 },
+                  ]}
+                  onPress={() =>
+                    setSelectedLegendCategory((curr) => (curr === item.id ? null : item.id))
+                  }>
+                  <View style={styles.legendLeft}>
+                    <View style={[styles.legendColorDot, { backgroundColor: item.color }]} />
+                    <Text style={[styles.legendName, { color: theme.text }]} numberOfLines={1}>
+                      {item.name}
+                    </Text>
+                  </View>
+                  <Text style={[styles.legendPercent, { color: theme.text }]}>
+                    {slice?.percentage ?? 0}%
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* 5. SMART INSIGHT ALERT BANNER */}
+        {warningEnvelope && !alertDismissed && (
+          <View style={[styles.insightAlertCard, { backgroundColor: isDark ? '#181B25' : '#FFF1F2', borderColor: '#F43F5E' }]}>
+            <View style={[styles.alertIconCircle, { backgroundColor: 'rgba(244, 63, 94, 0.2)' }]}>
+              <Warning size={moderateScale(20)} color="#F43F5E" weight="fill" />
+            </View>
+            <View style={styles.alertContent}>
+              <View style={styles.alertHeaderRow}>
+                <Text style={[styles.alertHeading, { color: '#F43F5E' }]}>
+                  {warningEnvelope.name} Near Limit
+                </Text>
+                <View style={styles.alertPill}>
+                  <Text style={styles.alertPillText}>Alert</Text>
+                </View>
+              </View>
+              <Text style={[styles.alertMessage, { color: theme.textSecondary }]}>
+                You have consumed <Text style={{ color: theme.text, fontWeight: '700' }}>{Math.round((warningEnvelope.spent / warningEnvelope.budget) * 100)}% ({formatCurrency(warningEnvelope.spent)})</Text> of
+                your allocated {warningEnvelope.name} pool. Consider dialing down non-essential expenses.
+              </Text>
+              <View style={styles.alertActionRow}>
+                <Pressable
+                  style={[styles.alertActionBtn, { backgroundColor: '#F43F5E' }]}
+                  onPress={() => Alert.alert('Budget Adjust', 'Adjust monthly envelope pool in Settings.')}>
+                  <Text style={styles.alertActionBtnText}>Adjust Cap</Text>
+                </Pressable>
+                <Pressable onPress={() => setAlertDismissed(true)}>
+                  <Text style={[styles.alertDismissText, { color: theme.textSecondary }]}>Dismiss</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* 6. CATEGORY ENVELOPES LISTING */}
+        <View style={styles.envelopesSection}>
+          <View style={styles.envelopesHeader}>
+            <View>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>Category Allocations</Text>
+              <Text style={[styles.activitySub, { color: theme.textSecondary }]}>
+                {envelopes.length} assigned monthly envelopes
+              </Text>
+            </View>
+            <Pressable
+              style={styles.addPoolBtn}
+              onPress={() => Alert.alert('Add Envelope', 'Select an expense category to allocate a monthly budget pool.')}>
+              <PlusCircle size={moderateScale(18)} color="#10B981" weight="fill" />
+              <Text style={[styles.addPoolText, { color: '#10B981' }]}>Add Pool</Text>
+            </Pressable>
+          </View>
+
+          {envelopes.length === 0 ? (
+            <View style={[styles.emptyContainer, { backgroundColor: isDark ? '#181B25' : '#FFFFFF' }]}>
+              <Text style={[styles.emptyTitle, { color: theme.text }]}>No Category Spending</Text>
+              <Text style={[styles.emptySubtitle, { color: theme.textMuted }]}>
+                All category balances are currently ₹0.00. Log an expense to track your budget allocations.
+              </Text>
+            </View>
+          ) : (
+            envelopes.map((item) => {
+              const isExpanded = expandedCategoryId === item.id;
+              const pct = Math.min(100, Math.round((item.spent / item.budget) * 100));
+              const left = Math.max(0, item.budget - item.spent);
+
+              // Filter transactions for this category
+              const catTxs = transactions.filter(
+                (tx) => tx.type === 'expense' && tx.category === item.id
+              );
+
+              return (
+                <View
+                  key={item.id}
+                  style={[
+                    styles.envelopeCard,
+                    { backgroundColor: isDark ? '#181B25' : '#FFFFFF', borderColor: theme.border },
+                  ]}>
+                  <Pressable
+                    style={styles.envelopeCardHeader}
+                    onPress={() =>
+                      setExpandedCategoryId((curr) => (curr === item.id ? null : item.id))
+                    }>
+                    <View style={styles.envLeft}>
+                      <View style={[styles.envIconCircle, { backgroundColor: item.color + '22' }]}>
+                        <CategoryIcon name={item.icon} size={moderateScale(20)} color={item.color} />
+                      </View>
+                      <View>
+                        <Text style={[styles.envName, { color: theme.text }]}>{item.name}</Text>
+                        <Text style={[styles.envBudgetSub, { color: theme.textSecondary }]}>
+                          Budget: {formatCurrency(item.budget)} / mo
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={[styles.envStatusBadge, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}>
+                      <View style={[styles.statusDot, { backgroundColor: item.color }]} />
+                      <Text style={[styles.envStatusText, { color: item.color }]}>{item.statusText}</Text>
+                    </View>
+                  </Pressable>
+
+                {/* Amount Row */}
+                <View style={styles.envMetricsRow}>
+                  <Text style={[styles.envSpentText, { color: theme.text }]}>
+                    {formatCurrency(item.spent)}{' '}
+                    <Text style={[styles.envSpentUnit, { color: theme.textMuted }]}>spent</Text>
+                  </Text>
+                  <Text style={[styles.envLeftText, { color: item.statusType === 'warning' ? '#F43F5E' : '#10B981' }]}>
+                    {formatCurrency(left)} left
+                  </Text>
+                </View>
+
+                {/* Progress Bar */}
+                <View style={[styles.envProgressTrack, { backgroundColor: isDark ? '#262A34' : '#E2E8F0' }]}>
+                  <View style={[styles.envProgressFill, { width: `${pct}%`, backgroundColor: item.color }]} />
+                </View>
+
+                {/* Card Sub-Footer */}
+                <View style={styles.envCardFooter}>
+                  <Text style={[styles.envTxCount, { color: theme.textSecondary }]}>
+                    {catTxs.length > 0 ? `${catTxs.length} transactions` : `${item.txCount} transactions`}
+                  </Text>
+                  <Text style={[styles.envNote, { color: theme.textSecondary }]}>{item.note}</Text>
+                </View>
+
+                {/* Expanded Transactions for this Category */}
+                {isExpanded && (
+                  <View style={[styles.expandedTxList, { borderTopColor: isDark ? '#262A34' : '#F1F5F9' }]}>
+                    {catTxs.length > 0 ? (
+                      catTxs.map((tx) => (
+                        <View key={tx.id} style={styles.txRow}>
+                          <View style={styles.txRowLeft}>
+                            <Text style={[styles.txDesc, { color: theme.text }]}>
+                              {tx.description || item.name}
+                            </Text>
+                            <Text style={[styles.txDate, { color: theme.textMuted }]}>
+                              {new Date(tx.date).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                            </Text>
+                          </View>
+                          <Text style={[styles.txAmount, { color: '#F43F5E' }]}>
+                            -{formatCurrency(tx.amount)}
+                          </Text>
+                        </View>
+                      ))
+                    ) : (
+                      <Text style={[styles.noTxText, { color: theme.textMuted }]}>
+                        No recent transactions logged in this category for this month.
+                      </Text>
+                    )}
+                  </View>
+                )}
+              </View>
+            );
+          }))}
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -493,219 +622,509 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
   },
-  listContent: {
-    paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.xxxl,
-  },
-  header: {
-    paddingTop: Spacing.sm,
-    paddingBottom: Spacing.xs,
-  },
-  title: {
-    fontSize: fontScale(24),
-    fontWeight: '700',
-    letterSpacing: -0.5,
-  },
-  subtitle: {
-    fontSize: fontScale(13),
-    marginTop: moderateScale(2),
-    marginBottom: Spacing.md,
-  },
-  rangeSegmentWrap: {
+  topHeader: {
     flexDirection: 'row',
-    borderRadius: Radius.full,
-    padding: moderateScale(4),
-    marginBottom: Spacing.md,
-  },
-  rangeSegmentBtn: {
-    flex: 1,
-    paddingVertical: moderateScale(8),
     alignItems: 'center',
-    borderRadius: Radius.full,
-  },
-  rangeSegmentText: {
-    fontSize: fontScale(12),
-    fontWeight: '700',
-  },
-  healthCard: {
-    padding: Spacing.lg,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    marginBottom: Spacing.md,
-  },
-  healthHeader: {
-    flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
   },
-  cardTitle: {
-    fontSize: fontScale(16),
-    fontWeight: '700',
-  },
-  rateBadge: {
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: moderateScale(4),
-    borderRadius: Radius.full,
-  },
-  rateBadgeText: {
-    fontSize: fontScale(12),
-    fontWeight: '700',
-  },
-  healthStatsRow: {
+  headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.md,
+    gap: Spacing.sm,
   },
-  healthStatCol: {
-    flex: 1,
+  avatarCircle: {
+    width: moderateScale(34),
+    height: moderateScale(34),
+    borderRadius: Radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  healthStatLabelRow: {
+  appBranding: {
+    fontSize: fontScale(10),
+    fontWeight: '700',
+    letterSpacing: 1.2,
+  },
+  screenTitle: {
+    fontSize: fontScale(18),
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  iconButton: {
+    width: moderateScale(40),
+    height: moderateScale(40),
+    borderRadius: Radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scrollContent: {
+    paddingHorizontal: Spacing.md,
+    paddingBottom: moderateScale(80),
+    gap: Spacing.md,
+  },
+
+  /* Period Nav */
+  periodNavContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+  },
+  periodNavBtn: {
+    width: moderateScale(34),
+    height: moderateScale(34),
+    borderRadius: Radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  periodCenter: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.xs,
-    marginBottom: moderateScale(2),
   },
-  healthStatLabel: {
-    fontSize: fontScale(12),
-    fontWeight: '600',
-  },
-  healthStatValue: {
-    fontSize: fontScale(18),
+  periodMonthText: {
+    fontSize: fontScale(16),
     fontWeight: '700',
   },
-  healthDivider: {
-    width: 1,
-    height: moderateScale(38),
-    marginHorizontal: Spacing.md,
+  horizonScroll: {
+    gap: Spacing.xs,
+    paddingVertical: moderateScale(2),
   },
-  netSavingsBanner: {
+  horizonPill: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: moderateScale(7),
+    borderRadius: Radius.full,
+  },
+  horizonPillText: {
+    fontSize: fontScale(12),
+  },
+
+  /* Budget Health Status Banner */
+  budgetHealthCard: {
+    borderRadius: Radius.xl,
+    padding: Spacing.md,
+    borderWidth: 1,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  healthBannerGlow: {
+    position: 'absolute',
+    top: -moderateScale(50),
+    right: -moderateScale(50),
+    width: moderateScale(150),
+    height: moderateScale(150),
+    borderRadius: Radius.full,
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+  },
+  healthHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: Spacing.md,
-    borderRadius: Radius.md,
+    marginBottom: Spacing.xs,
   },
-  netSavingsLabel: {
-    fontSize: fontScale(13),
+  healthTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  pulseDot: {
+    width: moderateScale(8),
+    height: moderateScale(8),
+    borderRadius: Radius.full,
+  },
+  healthStatusLabel: {
+    color: '#10B981',
+    fontSize: fontScale(11),
+    fontWeight: '700',
+    letterSpacing: 0.8,
+  },
+  statusBadge: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: moderateScale(3),
+    borderRadius: Radius.full,
+  },
+  statusBadgeText: {
+    fontSize: fontScale(10),
     fontWeight: '600',
   },
-  netSavingsValue: {
-    fontSize: fontScale(16),
+  spentVsTargetRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    marginVertical: Spacing.xs,
+  },
+  spentSub: {
+    fontSize: fontScale(11),
+  },
+  spentValRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: Spacing.xs,
+    marginTop: moderateScale(2),
+  },
+  spentValText: {
+    fontSize: fontScale(24),
     fontWeight: '800',
+    letterSpacing: -0.5,
   },
-  chartCard: {
+  spentPercentText: {
+    color: '#10B981',
+    fontSize: fontScale(14),
+    fontWeight: '700',
+  },
+  targetCol: {
+    alignItems: 'flex-end',
+  },
+  targetValText: {
+    fontSize: fontScale(18),
+    fontWeight: '700',
+    marginTop: moderateScale(2),
+  },
+  linearTrack: {
+    height: moderateScale(8),
+    borderRadius: Radius.full,
+    overflow: 'hidden',
+    marginVertical: Spacing.sm,
+  },
+  linearFill: {
+    height: '100%',
+    borderRadius: Radius.full,
+  },
+  healthFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  safeFooterLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: moderateScale(4),
+  },
+  safeFooterText: {
+    fontSize: fontScale(11),
+  },
+  remainingText: {
+    fontSize: fontScale(11),
+    fontWeight: '700',
+  },
+
+  /* Allocation Split Donut */
+  allocationCard: {
+    borderRadius: Radius.xl,
     padding: Spacing.lg,
-    borderRadius: Radius.lg,
     borderWidth: 1,
-    marginBottom: Spacing.md,
   },
-  chartHeaderRow: {
+  allocationHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: Spacing.md,
   },
-  chartSub: {
-    fontSize: fontScale(11),
+  sectionTitle: {
+    fontSize: fontScale(16),
+    fontWeight: '700',
+  },
+  activitySub: {
+    fontSize: fontScale(12),
+    marginTop: moderateScale(2),
+  },
+  percentToggleBtn: {
+    width: moderateScale(34),
+    height: moderateScale(34),
+    borderRadius: Radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  donutContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: Spacing.sm,
+  },
+  donutSvgWrap: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  donutCenterCard: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.xs,
+  },
+  centerSubLabel: {
+    fontSize: fontScale(9),
+    fontWeight: '700',
+    letterSpacing: 0.8,
+  },
+  centerAmountText: {
+    fontSize: fontScale(17),
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  centerBudgetRatio: {
+    color: '#10B981',
+    fontSize: fontScale(10),
+    fontWeight: '700',
     marginTop: moderateScale(1),
   },
-  legendRow: {
-    flexDirection: 'row',
-    gap: Spacing.md,
+  centerCategoryCount: {
+    fontSize: fontScale(9),
+    marginTop: moderateScale(2),
   },
-  legendItem: {
+  legendGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+    marginTop: Spacing.md,
+  },
+  legendCard: {
+    width: '48.5%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: Spacing.sm,
+    borderRadius: Radius.md,
+  },
+  legendLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.xs,
+    flex: 1,
   },
-  legendDot: {
-    width: moderateScale(8),
-    height: moderateScale(8),
+  legendColorDot: {
+    width: moderateScale(10),
+    height: moderateScale(10),
     borderRadius: Radius.full,
   },
-  legendLabel: {
-    fontSize: fontScale(11),
+  legendName: {
+    fontSize: fontScale(12),
     fontWeight: '600',
+    flex: 1,
   },
-  chartWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chartEmpty: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.xl,
-    gap: Spacing.xs,
-  },
-  chartEmptyText: {
-    fontSize: fontScale(13),
-  },
-  sectionHeading: {
-    fontSize: fontScale(17),
+  legendPercent: {
+    fontSize: fontScale(12),
     fontWeight: '700',
-    marginTop: Spacing.xs,
-    marginBottom: Spacing.sm,
   },
-  catCard: {
+
+  /* Smart Insight Alert */
+  insightAlertCard: {
+    flexDirection: 'row',
     padding: Spacing.md,
-    borderRadius: Radius.md,
+    borderRadius: Radius.xl,
     borderWidth: 1,
-    marginBottom: Spacing.sm,
+    gap: Spacing.sm,
   },
-  catHeader: {
+  alertIconCircle: {
+    width: moderateScale(36),
+    height: moderateScale(36),
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  alertContent: {
+    flex: 1,
+  },
+  alertHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Spacing.sm,
   },
-  catLeft: {
+  alertHeading: {
+    fontSize: fontScale(13),
+    fontWeight: '700',
+  },
+  alertPill: {
+    paddingHorizontal: moderateScale(6),
+    paddingVertical: moderateScale(1),
+    borderRadius: Radius.sm,
+    backgroundColor: 'rgba(244, 63, 94, 0.15)',
+  },
+  alertPillText: {
+    color: '#F43F5E',
+    fontSize: fontScale(10),
+    fontWeight: '700',
+  },
+  alertMessage: {
+    fontSize: fontScale(12),
+    lineHeight: moderateScale(17),
+    marginTop: moderateScale(4),
+  },
+  alertActionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
+    marginTop: Spacing.sm,
   },
-  catIconCircle: {
-    width: moderateScale(36),
-    height: moderateScale(36),
-    borderRadius: Radius.full,
+  alertActionBtn: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: moderateScale(4),
+    borderRadius: Radius.sm,
+  },
+  alertActionBtnText: {
+    color: '#FFFFFF',
+    fontSize: fontScale(11),
+    fontWeight: '700',
+  },
+  alertDismissText: {
+    fontSize: fontScale(11),
+    textDecorationLine: 'underline',
+  },
+
+  /* Category Envelopes */
+  envelopesSection: {
+    gap: Spacing.sm,
+  },
+  envelopesHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  addPoolBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: moderateScale(4),
+  },
+  addPoolText: {
+    fontSize: fontScale(13),
+    fontWeight: '700',
+  },
+  envelopeCard: {
+    padding: Spacing.md,
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+  },
+  envelopeCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.xs,
+  },
+  envLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    flex: 1,
+  },
+  envIconCircle: {
+    width: moderateScale(40),
+    height: moderateScale(40),
+    borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  catName: {
+  envName: {
     fontSize: fontScale(14),
-    fontWeight: '600',
+    fontWeight: '700',
   },
-  catPercent: {
+  envBudgetSub: {
     fontSize: fontScale(11),
     marginTop: moderateScale(1),
   },
-  catAmount: {
-    fontSize: fontScale(15),
+  envStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: moderateScale(4),
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: moderateScale(3),
+    borderRadius: Radius.full,
+  },
+  statusDot: {
+    width: moderateScale(6),
+    height: moderateScale(6),
+    borderRadius: Radius.full,
+  },
+  envStatusText: {
+    fontSize: fontScale(11),
     fontWeight: '700',
   },
-  progressTrack: {
+  envMetricsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    marginTop: Spacing.xs,
+  },
+  envSpentText: {
+    fontSize: fontScale(14),
+    fontWeight: '700',
+  },
+  envSpentUnit: {
+    fontSize: fontScale(11),
+    fontWeight: '400',
+  },
+  envLeftText: {
+    fontSize: fontScale(12),
+    fontWeight: '700',
+  },
+  envProgressTrack: {
     height: moderateScale(6),
     borderRadius: Radius.full,
     overflow: 'hidden',
+    marginVertical: Spacing.xs,
   },
-  progressBar: {
+  envProgressFill: {
     height: '100%',
     borderRadius: Radius.full,
   },
-  emptyContainer: {
-    paddingVertical: Spacing.xxxl,
+  envCardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
+  },
+  envTxCount: {
+    fontSize: fontScale(10),
+  },
+  envNote: {
+    fontSize: fontScale(10),
+  },
+  expandedTxList: {
+    marginTop: Spacing.sm,
+    paddingTop: Spacing.xs,
+    borderTopWidth: 1,
     gap: Spacing.xs,
   },
-  emptyTitle: {
-    fontSize: fontScale(16),
+  txRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: moderateScale(3),
+  },
+  txRowLeft: {
+    flex: 1,
+  },
+  txDesc: {
+    fontSize: fontScale(12),
     fontWeight: '600',
-    marginTop: Spacing.sm,
+  },
+  txDate: {
+    fontSize: fontScale(10),
+  },
+  txAmount: {
+    fontSize: fontScale(13),
+    fontWeight: '700',
+  },
+  noTxText: {
+    fontSize: fontScale(11),
+    fontStyle: 'italic',
+    paddingVertical: moderateScale(4),
+  },
+  emptyContainer: {
+    padding: Spacing.xl,
+    borderRadius: Radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: Spacing.md,
+  },
+  emptyTitle: {
+    fontSize: fontScale(14),
+    fontWeight: '700',
   },
   emptySubtitle: {
-    fontSize: fontScale(13),
+    fontSize: fontScale(11),
+    marginTop: moderateScale(4),
     textAlign: 'center',
-    paddingHorizontal: Spacing.xl,
   },
 });

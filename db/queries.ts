@@ -1,4 +1,5 @@
 import { SQLiteDatabase } from 'expo-sqlite';
+import { Category } from '@/constants/categories';
 
 export interface Wallet {
   id: string;
@@ -298,3 +299,54 @@ export async function getDailySpending(
     [sinceTimestamp]
   );
 }
+
+/**
+ * Fetch all categories or filtered by type ('income' | 'expense')
+ */
+export async function getCategories(
+  db: SQLiteDatabase,
+  type?: 'income' | 'expense'
+): Promise<Category[]> {
+  if (type) {
+    return await db.getAllAsync<Category>(
+      'SELECT id, name, icon, color, type FROM categories WHERE type = ? ORDER BY created_at ASC',
+      [type]
+    );
+  }
+  return await db.getAllAsync<Category>(
+    'SELECT id, name, icon, color, type FROM categories ORDER BY created_at ASC'
+  );
+}
+
+/**
+ * Creates a user custom category.
+ */
+export async function createCategory(
+  db: SQLiteDatabase,
+  cat: { id: string; name: string; icon: string; color: string; type: 'income' | 'expense' }
+): Promise<void> {
+  const createdAt = Date.now();
+  await db.runAsync(
+    'INSERT INTO categories (id, name, icon, color, type, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    [cat.id, cat.name, cat.icon, cat.color, cat.type, createdAt]
+  );
+}
+
+/**
+ * Deletes a category.
+ */
+export async function deleteCategory(db: SQLiteDatabase, id: string): Promise<void> {
+  await db.runAsync('DELETE FROM categories WHERE id = ?', [id]);
+}
+
+/**
+ * Clears all transactions and resets wallet balances to zero.
+ */
+export async function clearAllTransactions(db: SQLiteDatabase): Promise<void> {
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('DELETE FROM transactions');
+    await db.runAsync('UPDATE wallets SET current_balance = 0');
+  });
+}
+
+

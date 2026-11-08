@@ -6,38 +6,82 @@ export interface Category {
   type: 'income' | 'expense';
 }
 
-export const EXPENSE_CATEGORIES: Category[] = [
-  { id: 'groceries', name: 'Groceries', icon: 'ShoppingCart', color: '#00E5FF', type: 'expense' },
-  { id: 'transport', name: 'Transportation', icon: 'Car', color: '#8B5CF6', type: 'expense' },
-  { id: 'food', name: 'Food & Dining', icon: 'ForkKnife', color: '#FB923C', type: 'expense' },
-  { id: 'rent', name: 'Rent & Housing', icon: 'House', color: '#6366F1', type: 'expense' },
-  { id: 'shopping', name: 'Shopping', icon: 'Bag', color: '#EC4899', type: 'expense' },
-  { id: 'bills', name: 'Bills & Utilities', icon: 'Receipt', color: '#38BDF8', type: 'expense' },
-  { id: 'entertainment', name: 'Entertainment', icon: 'GameController', color: '#06B6D4', type: 'expense' },
-  { id: 'health', name: 'Healthcare', icon: 'FirstAid', color: '#EF4444', type: 'expense' },
-  { id: 'education', name: 'Education', icon: 'GraduationCap', color: '#F59E0B', type: 'expense' },
-  { id: 'travel', name: 'Travel', icon: 'Airplane', color: '#14B8A6', type: 'expense' },
-  { id: 'other_expense', name: 'Other Expense', icon: 'DotsThreeOutline', color: '#64748B', type: 'expense' },
-];
+// Default categories have been removed as requested.
+// Categories are now dynamically user-created and stored in the database.
+export const EXPENSE_CATEGORIES: Category[] = [];
+export const INCOME_CATEGORIES: Category[] = [];
+export const ALL_CATEGORIES: Category[] = [];
 
-export const INCOME_CATEGORIES: Category[] = [
-  { id: 'salary', name: 'Salary', icon: 'CalendarBlank', color: '#F43F5E', type: 'income' },
-  { id: 'freelance', name: 'Freelance', icon: 'Laptop', color: '#FACC15', type: 'income' },
-  { id: 'investments', name: 'Investments', icon: 'TrendUp', color: '#2DD4BF', type: 'income' },
-  { id: 'gift', name: 'Gifts', icon: 'Gift', color: '#EC4899', type: 'income' },
-  { id: 'other_income', name: 'Other Income', icon: 'Coins', color: '#00E5FF', type: 'income' },
-];
+const categoryRegistry = new Map<string, Category>();
 
-export const ALL_CATEGORIES: Category[] = [...EXPENSE_CATEGORIES, ...INCOME_CATEGORIES];
+export function registerCategory(cat: Category): void {
+  categoryRegistry.set(cat.id, cat);
+}
+
+export function registerCategories(cats: Category[]): void {
+  cats.forEach((c) => categoryRegistry.set(c.id, c));
+}
 
 export function getCategoryById(id: string): Category {
-  const found = ALL_CATEGORIES.find((cat) => cat.id === id);
-  if (found) return found;
+  if (categoryRegistry.has(id)) {
+    return categoryRegistry.get(id)!;
+  }
+  const cleanName = id
+    .replace(/[_-]/g, ' ')
+    .split(' ')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+
   return {
     id,
-    name: id,
-    icon: 'Question',
-    color: '#64748B',
+    name: cleanName || 'General',
+    icon: 'DotsThreeOutline',
+    color: '#86948A',
     type: 'expense',
   };
 }
+
+export const AVAILABLE_CATEGORY_ICONS = [
+  { name: 'ForkKnife', label: 'Food' },
+  { name: 'ShoppingCart', label: 'Shopping' },
+  { name: 'House', label: 'Housing' },
+  { name: 'Car', label: 'Transport' },
+  { name: 'Taxi', label: 'Transit' },
+  { name: 'Receipt', label: 'Bills' },
+  { name: 'GameController', label: 'Fun' },
+  { name: 'FirstAid', label: 'Health' },
+  { name: 'GraduationCap', label: 'Education' },
+  { name: 'Airplane', label: 'Travel' },
+  { name: 'Briefcase', label: 'Work' },
+  { name: 'Laptop', label: 'Tech' },
+  { name: 'DeviceMobile', label: 'Gadget' },
+  { name: 'TrendUp', label: 'Invest' },
+  { name: 'Gift', label: 'Gift' },
+  { name: 'Coins', label: 'Earnings' },
+  { name: 'Wallet', label: 'Wallet' },
+  { name: 'Bank', label: 'Bank' },
+  { name: 'CreditCard', label: 'Card' },
+  { name: 'Money', label: 'Cash' },
+  { name: 'PiggyBank', label: 'Savings' },
+  { name: 'CalendarBlank', label: 'Sub/Regular' },
+  { name: 'DotsThreeOutline', label: 'Other' },
+];
+
+export const AVAILABLE_CATEGORY_COLORS = [
+  '#10B981', // Emerald
+  '#6FFBBE', // Mint
+  '#4EDEA3', // Neon Emerald
+  '#2DD4BF', // Teal
+  '#06B6D4', // Cyan
+  '#3B82F6', // Blue
+  '#6366F1', // Indigo
+  '#8B5CF6', // Purple
+  '#C0C1FF', // Periwinkle
+  '#EC4899', // Pink
+  '#F43F5E', // Rose
+  '#EF4444', // Red
+  '#F97316', // Orange
+  '#F59E0B', // Amber
+  '#FACC15', // Yellow
+  '#86948A', // Slate
+];
