@@ -1,4 +1,4 @@
-# Expico 🪙
+# Expico 
 
 <p align="center">
   <img src="./assets/images/icon.png" width="120" height="120" alt="Expico Logo" style="border-radius: 24px;" />
@@ -88,27 +88,6 @@ expico/
 - [Expo Go](https://expo.dev/client) app installed on your physical device (iOS or Android)
 - `npm` or `bun`
 
-### Installation
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/AjinkyaBiradar/expico.git
-   cd expico
-   ```
-
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Start the development server:
-   ```bash
-   npx expo start
-   ```
-
-4. Scan the QR code with **Expo Go** (Android) or the **Camera app** (iOS) on your device.
-
----
 
 ## 🛠️ Scripts & Quality Verification
 
