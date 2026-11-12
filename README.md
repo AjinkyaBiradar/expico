@@ -124,7 +124,3 @@ npx eas-cli@latest build -p android --profile production
 Produces an optimized `.aab` (Android App Bundle) ready for submission to the Google Play Console.
 
 ---
-
-## 📄 License
-
-This project is licensed under the [MIT License](LICENSE).
