@@ -8,6 +8,7 @@ import {
   CaretRight,
   Percent,
   PlusCircle,
+  Trash,
   User,
 } from 'phosphor-react-native';
 import React, { useCallback, useMemo, useState } from 'react';
@@ -29,6 +30,7 @@ import { getCategoryById, registerCategories } from '@/constants/categories';
 import { Colors } from '@/constants/colors';
 import {
   CategorySummary,
+  deleteTransaction,
   getCategories,
   getCategoryBreakdown,
   getPeriodSummary,
@@ -122,6 +124,29 @@ export default function AnalyticsScreen() {
     setRefreshing(true);
     await loadAnalytics();
     setRefreshing(false);
+  };
+
+  const handleDeleteTransaction = (tx: TransactionWithWallet) => {
+    Alert.alert(
+      'Delete Transaction',
+      `Are you sure you want to delete this transaction of ${formatCurrency(tx.amount)}? Your account balance will be updated automatically.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteTransaction(db, tx.id);
+              await loadAnalytics();
+            } catch (err) {
+              console.error('Failed to delete transaction:', err);
+              Alert.alert('Error', 'Failed to delete transaction. Please try again.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handlePrevMonth = () => {
@@ -506,9 +531,23 @@ export default function AnalyticsScreen() {
                               {new Date(tx.date).toLocaleDateString([], { month: 'short', day: 'numeric' })}
                             </Text>
                           </View>
-                          <Text style={[styles.txAmount, { color: '#F43F5E' }]}>
-                            -{formatCurrency(tx.amount)}
-                          </Text>
+                          <View style={styles.txRowRight}>
+                            <Text style={[styles.txAmount, { color: '#F43F5E' }]}>
+                              -{formatCurrency(tx.amount)}
+                            </Text>
+                            <Pressable
+                              style={({ pressed }) => [
+                                styles.txRowDeleteBtn,
+                                {
+                                  opacity: pressed ? 0.6 : 1,
+                                  backgroundColor: isDark ? 'rgba(244, 63, 94, 0.15)' : '#FFE4E6',
+                                },
+                              ]}
+                              hitSlop={8}
+                              onPress={() => handleDeleteTransaction(tx)}>
+                              <Trash size={moderateScale(14)} color="#F43F5E" />
+                            </Pressable>
+                          </View>
                         </View>
                       ))
                     ) : (
@@ -1014,6 +1053,17 @@ const styles = StyleSheet.create({
   txAmount: {
     fontSize: fontScale(13),
     fontWeight: '700',
+  },
+  txRowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  txRowDeleteBtn: {
+    padding: moderateScale(4),
+    borderRadius: Radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   noTxText: {
     fontSize: fontScale(11),

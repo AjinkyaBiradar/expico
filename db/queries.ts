@@ -170,13 +170,16 @@ export const addTransaction = createTransaction;
  * Deletes a transaction and reverts its impact on the wallet balance.
  */
 export async function deleteTransaction(db: SQLiteDatabase, id: string): Promise<void> {
+  let receiptToDelete: string | null = null;
   await db.withTransactionAsync(async () => {
     const tx = await db.getFirstAsync<Transaction>(
-      'SELECT id, wallet_id, type, amount FROM transactions WHERE id = ?',
+      'SELECT id, wallet_id, type, amount, receipt_path FROM transactions WHERE id = ?',
       [id]
     );
 
     if (!tx) return;
+
+    receiptToDelete = tx.receipt_path ?? null;
 
     const balanceAdjustment = tx.type === 'income' ? -tx.amount : tx.amount;
     await db.runAsync(
@@ -186,6 +189,15 @@ export async function deleteTransaction(db: SQLiteDatabase, id: string): Promise
 
     await db.runAsync('DELETE FROM transactions WHERE id = ?', [id]);
   });
+
+  if (receiptToDelete) {
+    try {
+      const { deleteReceiptImageAsync } = await import('@/utils/fileStorage');
+      await deleteReceiptImageAsync(receiptToDelete);
+    } catch (e) {
+      console.warn('Failed to delete receipt file during tx delete:', e);
+    }
+  }
 }
 
 /**

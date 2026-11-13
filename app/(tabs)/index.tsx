@@ -10,6 +10,7 @@ import {
   EyeSlash,
   Plus,
   ShieldCheck,
+  Trash,
   User,
   X,
 } from 'phosphor-react-native';
@@ -34,6 +35,7 @@ import { Category, getCategoryById, registerCategories } from '@/constants/categ
 import { Colors } from '@/constants/colors';
 import {
   addTransaction,
+  deleteTransaction,
   getBalanceSummary,
   getCategories,
   getTransactions,
@@ -276,6 +278,29 @@ export default function HomeScreen() {
       console.error('Failed to log quick expense:', err);
       Alert.alert('Error', 'Could not record quick expense.');
     }
+  };
+
+  const handleDeleteTransaction = (tx: TransactionWithWallet) => {
+    Alert.alert(
+      'Delete Transaction',
+      `Are you sure you want to delete this ${tx.type === 'income' ? 'income' : 'expense'} transaction of ${formatCurrency(tx.amount)}? Your account balance will be updated automatically.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteTransaction(db, tx.id);
+              await loadData();
+            } catch (err) {
+              console.error('Failed to delete transaction:', err);
+              Alert.alert('Error', 'Failed to delete transaction. Please try again.');
+            }
+          },
+        },
+      ]
+    );
   };
 
 
@@ -607,14 +632,28 @@ export default function HomeScreen() {
                           </View>
                         </View>
 
-                        <Text
-                          style={[
-                            styles.txAmount,
-                            { color: isIncome ? '#10B981' : theme.text },
-                          ]}>
-                          {isIncome ? '+' : '-'}
-                          {formatCurrency(tx.amount)}
-                        </Text>
+                        <View style={styles.txRight}>
+                          <Text
+                            style={[
+                              styles.txAmount,
+                              { color: isIncome ? '#10B981' : theme.text },
+                            ]}>
+                            {isIncome ? '+' : '-'}
+                            {formatCurrency(tx.amount)}
+                          </Text>
+                          <Pressable
+                            style={({ pressed }) => [
+                              styles.txDeleteBtn,
+                              {
+                                opacity: pressed ? 0.6 : 1,
+                                backgroundColor: isDark ? 'rgba(244, 63, 94, 0.15)' : '#FFE4E6',
+                              },
+                            ]}
+                            hitSlop={8}
+                            onPress={() => handleDeleteTransaction(tx)}>
+                            <Trash size={moderateScale(15)} color="#F43F5E" />
+                          </Pressable>
+                        </View>
                       </View>
                     );
                   })}
@@ -1159,6 +1198,17 @@ const styles = StyleSheet.create({
   txAmount: {
     fontSize: fontScale(14),
     fontWeight: '700',
+  },
+  txRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  txDeleteBtn: {
+    padding: moderateScale(6),
+    borderRadius: Radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   emptyContainer: {
     padding: Spacing.xl,
