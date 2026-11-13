@@ -7,10 +7,8 @@ import {
   CaretLeft,
   CaretRight,
   Percent,
-  PiggyBank,
   PlusCircle,
   User,
-  Warning,
 } from 'phosphor-react-native';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
@@ -37,7 +35,7 @@ import {
   getTransactionsInRange,
   TransactionWithWallet,
 } from '@/db/queries';
-import { formatCompactCurrency as formatShort, formatCurrency } from '@/utils/formatters';
+import { formatCurrency } from '@/utils/formatters';
 import { fontScale, moderateScale, Radius, Spacing } from '@/utils/styling';
 
 type HorizonPeriod = 'thisMonth' | 'lastMonth' | 'q3' | 'custom';
@@ -46,11 +44,9 @@ interface CategoryEnvelope {
   id: string;
   name: string;
   spent: number;
-  budget: number;
+  percentage: number;
   color: string;
   icon: string;
-  statusText: string;
-  statusType: 'healthy' | 'under' | 'warning' | 'scheduled';
   txCount: number;
   note: string;
 }
@@ -82,13 +78,11 @@ export default function AnalyticsScreen() {
   const [horizon, setHorizon] = useState<HorizonPeriod>('thisMonth');
 
   const [totalSpent, setTotalSpent] = useState<number>(0);
-  const [totalIncome, setTotalIncome] = useState<number>(0);
   const [categories, setCategories] = useState<CategorySummary[]>([]);
   const [transactions, setTransactions] = useState<TransactionWithWallet[]>([]);
   const [expandedCategoryId, setExpandedCategoryId] = useState<string | null>(null);
   const [selectedLegendCategory, setSelectedLegendCategory] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState<boolean>(false);
-  const [alertDismissed, setAlertDismissed] = useState<boolean>(false);
 
   // Month range
   const monthStart = useMemo(
@@ -111,7 +105,6 @@ export default function AnalyticsScreen() {
 
       registerCategories(allDbCats);
       setTotalSpent(summary.totalExpense);
-      setTotalIncome(summary.totalIncome);
       setCategories(catList);
       setTransactions(txList);
     } catch (err) {
@@ -151,44 +144,31 @@ export default function AnalyticsScreen() {
 
 
 
-  // Total Target Budget & Spending strictly from database values
-  const budgetSpent = totalSpent;
-  const totalTargetBudget = Math.max(0, totalIncome > 0 ? totalIncome : totalSpent > 0 ? Math.round(totalSpent * 1.2) : 0);
-  const budgetPercent = totalTargetBudget > 0 ? Math.min(100, Math.round((budgetSpent / totalTargetBudget) * 100)) : 0;
-  const remainingBudget = Math.max(0, totalTargetBudget - budgetSpent);
-  const safeDailySpend = Math.round(remainingBudget / 12);
-
   // Dynamic Envelopes strictly derived from database categories
   const envelopes: CategoryEnvelope[] = useMemo(() => {
     if (categories.length === 0) {
       return [];
     }
 
+    const totalExpense = categories.reduce((sum, c) => sum + c.total, 0);
+
     return categories.map((catItem) => {
       const catInfo = getCategoryById(catItem.category);
-      const budget = Math.round(catItem.total * 1.25);
-      const ratio = budget > 0 ? Math.round((catItem.total / budget) * 100) : 0;
+      const percentage = totalExpense > 0 ? Math.round((catItem.total / totalExpense) * 100) : 0;
       const count = transactions.filter((t) => t.category === catItem.category).length;
 
       return {
         id: catItem.category,
         name: catInfo.name,
         spent: catItem.total,
-        budget,
+        percentage,
         color: catInfo.color,
         icon: catInfo.icon,
-        statusText: ratio > 85 ? `Warning (${ratio}%)` : `Optimal (${ratio}%)`,
-        statusType: ratio > 85 ? 'warning' : 'healthy',
         txCount: count,
         note: `${count} transaction${count === 1 ? '' : 's'} recorded`,
       };
     });
   }, [categories, transactions]);
-
-  // Warning envelope for alert banner (if any category exceeds 85%)
-  const warningEnvelope = useMemo(() => {
-    return envelopes.find((e) => e.statusType === 'warning');
-  }, [envelopes]);
 
   // Donut Arc calculation (Pure SVG)
   const donutSize = moderateScale(190);
@@ -295,57 +275,32 @@ export default function AnalyticsScreen() {
           })}
         </ScrollView>
 
-        {/* 3. BUDGET HEALTH STATUS HIGHLIGHT BANNER */}
+        {/* 3. SPENDING OVERVIEW HIGHLIGHT BANNER */}
         <View style={[styles.budgetHealthCard, { backgroundColor: isDark ? '#181B25' : '#FFFFFF', borderColor: theme.border }]}>
           <View style={styles.healthBannerGlow} />
 
           <View style={styles.healthHeaderRow}>
             <View style={styles.healthTitleRow}>
               <View style={[styles.pulseDot, { backgroundColor: '#10B981' }]} />
-              <Text style={styles.healthStatusLabel}>BUDGET HEALTH STATUS</Text>
+              <Text style={styles.healthStatusLabel}>SPENDING OVERVIEW</Text>
             </View>
             <View style={[styles.statusBadge, { backgroundColor: isDark ? '#31353F' : '#D1FAE5' }]}>
               <Text style={[styles.statusBadgeText, { color: isDark ? '#4EDEA3' : '#059669' }]}>
-                On Track • 12 days left
+                {envelopes.length} {envelopes.length === 1 ? 'Category' : 'Categories'}
               </Text>
             </View>
           </View>
 
-          {/* Amount Spend vs Target */}
+          {/* Amount Spent */}
           <View style={styles.spentVsTargetRow}>
             <View>
               <Text style={[styles.spentSub, { color: theme.textSecondary }]}>Total Spent</Text>
               <View style={styles.spentValRow}>
                 <Text style={[styles.spentValText, { color: theme.text }]}>
-                  {formatCurrency(budgetSpent)}
+                  {formatCurrency(totalSpent)}
                 </Text>
-                <Text style={styles.spentPercentText}>{budgetPercent}%</Text>
               </View>
             </View>
-            <View style={styles.targetCol}>
-              <Text style={[styles.spentSub, { color: theme.textSecondary }]}>Total Target</Text>
-              <Text style={[styles.targetValText, { color: theme.text }]}>
-                {formatCurrency(totalTargetBudget)}
-              </Text>
-            </View>
-          </View>
-
-          {/* Linear Progress Track */}
-          <View style={[styles.linearTrack, { backgroundColor: isDark ? '#31353F' : '#E2E8F0' }]}>
-            <View style={[styles.linearFill, { width: `${budgetPercent}%`, backgroundColor: '#10B981' }]} />
-          </View>
-
-          {/* Safe-to-Spend Footer */}
-          <View style={styles.healthFooter}>
-            <View style={styles.safeFooterLeft}>
-              <PiggyBank size={moderateScale(15)} color="#10B981" weight="fill" />
-              <Text style={[styles.safeFooterText, { color: theme.textSecondary }]}>
-                Safe-to-spend: {formatCurrency(safeDailySpend)} / day
-              </Text>
-            </View>
-            <Text style={[styles.remainingText, { color: theme.text }]}>
-              {formatCurrency(remainingBudget)} remaining
-            </Text>
           </View>
         </View>
 
@@ -417,10 +372,7 @@ export default function AnalyticsScreen() {
                 ]}>
                 <Text style={[styles.centerSubLabel, { color: theme.textSecondary }]}>SPENT TOTAL</Text>
                 <Text style={[styles.centerAmountText, { color: theme.text }]}>
-                  {formatCurrency(budgetSpent)}
-                </Text>
-                <Text style={styles.centerBudgetRatio}>
-                  {budgetPercent}% of {formatShort(totalTargetBudget)}
+                  {formatCurrency(totalSpent)}
                 </Text>
                 <Text style={[styles.centerCategoryCount, { color: theme.textMuted }]}>
                   {envelopes.length} Active Categories
@@ -461,53 +413,20 @@ export default function AnalyticsScreen() {
           </View>
         </View>
 
-        {/* 5. SMART INSIGHT ALERT BANNER */}
-        {warningEnvelope && !alertDismissed && (
-          <View style={[styles.insightAlertCard, { backgroundColor: isDark ? '#181B25' : '#FFF1F2', borderColor: '#F43F5E' }]}>
-            <View style={[styles.alertIconCircle, { backgroundColor: 'rgba(244, 63, 94, 0.2)' }]}>
-              <Warning size={moderateScale(20)} color="#F43F5E" weight="fill" />
-            </View>
-            <View style={styles.alertContent}>
-              <View style={styles.alertHeaderRow}>
-                <Text style={[styles.alertHeading, { color: '#F43F5E' }]}>
-                  {warningEnvelope.name} Near Limit
-                </Text>
-                <View style={styles.alertPill}>
-                  <Text style={styles.alertPillText}>Alert</Text>
-                </View>
-              </View>
-              <Text style={[styles.alertMessage, { color: theme.textSecondary }]}>
-                You have consumed <Text style={{ color: theme.text, fontWeight: '700' }}>{Math.round((warningEnvelope.spent / warningEnvelope.budget) * 100)}% ({formatCurrency(warningEnvelope.spent)})</Text> of
-                your allocated {warningEnvelope.name} pool. Consider dialing down non-essential expenses.
-              </Text>
-              <View style={styles.alertActionRow}>
-                <Pressable
-                  style={[styles.alertActionBtn, { backgroundColor: '#F43F5E' }]}
-                  onPress={() => Alert.alert('Budget Adjust', 'Adjust monthly envelope pool in Settings.')}>
-                  <Text style={styles.alertActionBtnText}>Adjust Cap</Text>
-                </Pressable>
-                <Pressable onPress={() => setAlertDismissed(true)}>
-                  <Text style={[styles.alertDismissText, { color: theme.textSecondary }]}>Dismiss</Text>
-                </Pressable>
-              </View>
-            </View>
-          </View>
-        )}
-
-        {/* 6. CATEGORY ENVELOPES LISTING */}
+        {/* 5. CATEGORY ALLOCATIONS LISTING */}
         <View style={styles.envelopesSection}>
           <View style={styles.envelopesHeader}>
             <View>
               <Text style={[styles.sectionTitle, { color: theme.text }]}>Category Allocations</Text>
               <Text style={[styles.activitySub, { color: theme.textSecondary }]}>
-                {envelopes.length} assigned monthly envelopes
+                {envelopes.length} active spending {envelopes.length === 1 ? 'category' : 'categories'}
               </Text>
             </View>
             <Pressable
               style={styles.addPoolBtn}
-              onPress={() => Alert.alert('Add Envelope', 'Select an expense category to allocate a monthly budget pool.')}>
+              onPress={() => Alert.alert('Add Category', 'Create a new expense category from the + button in the bottom bar.')}>
               <PlusCircle size={moderateScale(18)} color="#10B981" weight="fill" />
-              <Text style={[styles.addPoolText, { color: '#10B981' }]}>Add Pool</Text>
+              <Text style={[styles.addPoolText, { color: '#10B981' }]}>Add Category</Text>
             </Pressable>
           </View>
 
@@ -515,14 +434,12 @@ export default function AnalyticsScreen() {
             <View style={[styles.emptyContainer, { backgroundColor: isDark ? '#181B25' : '#FFFFFF' }]}>
               <Text style={[styles.emptyTitle, { color: theme.text }]}>No Category Spending</Text>
               <Text style={[styles.emptySubtitle, { color: theme.textMuted }]}>
-                All category balances are currently ₹0.00. Log an expense to track your budget allocations.
+                All category balances are currently ₹0.00. Log an expense to track your spending allocations.
               </Text>
             </View>
           ) : (
             envelopes.map((item) => {
               const isExpanded = expandedCategoryId === item.id;
-              const pct = Math.min(100, Math.round((item.spent / item.budget) * 100));
-              const left = Math.max(0, item.budget - item.spent);
 
               // Filter transactions for this category
               const catTxs = transactions.filter(
@@ -547,41 +464,33 @@ export default function AnalyticsScreen() {
                       </View>
                       <View>
                         <Text style={[styles.envName, { color: theme.text }]}>{item.name}</Text>
-                        <Text style={[styles.envBudgetSub, { color: theme.textSecondary }]}>
-                          Budget: {formatCurrency(item.budget)} / mo
-                        </Text>
                       </View>
-                    </View>
-
-                    <View style={[styles.envStatusBadge, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}>
-                      <View style={[styles.statusDot, { backgroundColor: item.color }]} />
-                      <Text style={[styles.envStatusText, { color: item.color }]}>{item.statusText}</Text>
                     </View>
                   </Pressable>
 
-                {/* Amount Row */}
-                <View style={styles.envMetricsRow}>
-                  <Text style={[styles.envSpentText, { color: theme.text }]}>
-                    {formatCurrency(item.spent)}{' '}
-                    <Text style={[styles.envSpentUnit, { color: theme.textMuted }]}>spent</Text>
-                  </Text>
-                  <Text style={[styles.envLeftText, { color: item.statusType === 'warning' ? '#F43F5E' : '#10B981' }]}>
-                    {formatCurrency(left)} left
-                  </Text>
-                </View>
+                  {/* Amount Row */}
+                  <View style={styles.envMetricsRow}>
+                    <Text style={[styles.envSpentText, { color: theme.text }]}>
+                      {formatCurrency(item.spent)}{' '}
+                      <Text style={[styles.envSpentUnit, { color: theme.textMuted }]}>spent</Text>
+                    </Text>
+                    <Text style={[styles.envPercentageText, { color: item.color }]}>
+                      {item.percentage}%
+                    </Text>
+                  </View>
 
-                {/* Progress Bar */}
-                <View style={[styles.envProgressTrack, { backgroundColor: isDark ? '#262A34' : '#E2E8F0' }]}>
-                  <View style={[styles.envProgressFill, { width: `${pct}%`, backgroundColor: item.color }]} />
-                </View>
+                  {/* Progress Bar */}
+                  <View style={[styles.envProgressTrack, { backgroundColor: isDark ? '#262A34' : '#E2E8F0' }]}>
+                    <View style={[styles.envProgressFill, { width: `${item.percentage}%`, backgroundColor: item.color }]} />
+                  </View>
 
-                {/* Card Sub-Footer */}
-                <View style={styles.envCardFooter}>
-                  <Text style={[styles.envTxCount, { color: theme.textSecondary }]}>
-                    {catTxs.length > 0 ? `${catTxs.length} transactions` : `${item.txCount} transactions`}
-                  </Text>
-                  <Text style={[styles.envNote, { color: theme.textSecondary }]}>{item.note}</Text>
-                </View>
+                  {/* Card Sub-Footer */}
+                  <View style={styles.envCardFooter}>
+                    <Text style={[styles.envTxCount, { color: theme.textSecondary }]}>
+                      {catTxs.length > 0 ? `${catTxs.length} transactions` : `${item.txCount} transactions`}
+                    </Text>
+                    <Text style={[styles.envNote, { color: theme.textSecondary }]}>{item.note}</Text>
+                  </View>
 
                 {/* Expanded Transactions for this Category */}
                 {isExpanded && (
@@ -1055,8 +964,8 @@ const styles = StyleSheet.create({
     fontSize: fontScale(11),
     fontWeight: '400',
   },
-  envLeftText: {
-    fontSize: fontScale(12),
+  envPercentageText: {
+    fontSize: fontScale(13),
     fontWeight: '700',
   },
   envProgressTrack: {
