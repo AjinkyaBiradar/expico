@@ -47,7 +47,8 @@
           "hidden": true,
           "behavior": "sticky-immersive"
         }
-      ]
+      ],
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true,

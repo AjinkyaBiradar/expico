@@ -724,41 +724,6 @@ const styles = StyleSheet.create({
     fontSize: fontScale(14),
     fontWeight: '700',
   },
-  targetCol: {
-    alignItems: 'flex-end',
-  },
-  targetValText: {
-    fontSize: fontScale(18),
-    fontWeight: '700',
-    marginTop: moderateScale(2),
-  },
-  linearTrack: {
-    height: moderateScale(8),
-    borderRadius: Radius.full,
-    overflow: 'hidden',
-    marginVertical: Spacing.sm,
-  },
-  linearFill: {
-    height: '100%',
-    borderRadius: Radius.full,
-  },
-  healthFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  safeFooterLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: moderateScale(4),
-  },
-  safeFooterText: {
-    fontSize: fontScale(11),
-  },
-  remainingText: {
-    fontSize: fontScale(11),
-    fontWeight: '700',
-  },
 
   /* Allocation Split Donut */
   allocationCard: {
@@ -812,12 +777,6 @@ const styles = StyleSheet.create({
     fontSize: fontScale(17),
     fontWeight: '800',
     letterSpacing: -0.5,
-  },
-  centerBudgetRatio: {
-    color: '#10B981',
-    fontSize: fontScale(10),
-    fontWeight: '700',
-    marginTop: moderateScale(1),
   },
   centerCategoryCount: {
     fontSize: fontScale(9),
@@ -966,27 +925,6 @@ const styles = StyleSheet.create({
   },
   envName: {
     fontSize: fontScale(14),
-    fontWeight: '700',
-  },
-  envBudgetSub: {
-    fontSize: fontScale(11),
-    marginTop: moderateScale(1),
-  },
-  envStatusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: moderateScale(4),
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: moderateScale(3),
-    borderRadius: Radius.full,
-  },
-  statusDot: {
-    width: moderateScale(6),
-    height: moderateScale(6),
-    borderRadius: Radius.full,
-  },
-  envStatusText: {
-    fontSize: fontScale(11),
     fontWeight: '700',
   },
   envMetricsRow: {

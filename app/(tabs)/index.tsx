@@ -5,50 +5,40 @@ import {
   ArrowUpRight,
   Bell,
   CaretDown,
-  Check,
   Eye,
   EyeSlash,
-  Plus,
   ShieldCheck,
   Trash,
   User,
-  X,
 } from 'phosphor-react-native';
-import React, { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
-  Modal,
-  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   useColorScheme,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { CategoryIcon } from '@/components/CategoryIcon';
-import { Category, getCategoryById, registerCategories } from '@/constants/categories';
+import { getCategoryById, registerCategories } from '@/constants/categories';
 import { Colors } from '@/constants/colors';
 import {
-  addTransaction,
   deleteTransaction,
   getBalanceSummary,
   getCategories,
   getTransactions,
-  getWallets,
   TransactionWithWallet,
-  Wallet,
 } from '@/db/queries';
-import { fontScale, moderateScale, Radius, Spacing } from '@/utils/styling';
 import {
   formatCurrency as safeFormatCurrency,
   formatStatCurrency as safeFormatStatCurrency,
-  generateUUID,
 } from '@/utils/formatters';
+import { fontScale, moderateScale, Radius, Spacing } from '@/utils/styling';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -58,7 +48,6 @@ export default function HomeScreen() {
   const theme = isDark ? Colors.dark : Colors.light;
 
   // Real-time state
-  const [wallets, setWallets] = useState<Wallet[]>([]);
   const [transactions, setTransactions] = useState<TransactionWithWallet[]>([]);
   const [totalBalance, setTotalBalance] = useState<number>(0);
   const [totalIncome, setTotalIncome] = useState<number>(0);
@@ -71,34 +60,20 @@ export default function HomeScreen() {
   const [activeWeekCycle, setActiveWeekCycle] = useState<'thisWeek' | 'lastWeek'>('thisWeek');
   const [selectedDayIndex, setSelectedDayIndex] = useState<number | null>(null);
 
-  // Quick Log Drawer Modal State
-  const [isQuickLogOpen, setIsQuickLogOpen] = useState<boolean>(false);
-  const [quickAmount, setQuickAmount] = useState<string>('');
-  const [expenseCategories, setExpenseCategories] = useState<Category[]>([]);
-  const [quickCategory, setQuickCategory] = useState<string>('');
-
   // Load live data from SQLite
   const loadData = useCallback(async () => {
     try {
-      const [walletList, balanceSummary, txList, catList] = await Promise.all([
-        getWallets(db),
+      const [balanceSummary, txList, catList] = await Promise.all([
         getBalanceSummary(db),
         getTransactions(db, 30),
         getCategories(db),
       ]);
 
-      setWallets(walletList);
       setTotalBalance(balanceSummary.totalBalance);
       setTotalIncome(balanceSummary.totalIncome);
       setTotalExpense(balanceSummary.totalExpense);
       setTransactions(txList);
       registerCategories(catList);
-      const expCats = catList.filter((c) => c.type === 'expense');
-      setExpenseCategories(expCats);
-      setQuickCategory((prev) => {
-        if (expCats.some((c) => c.id === prev)) return prev;
-        return expCats.length > 0 ? expCats[0].id : '';
-      });
     } catch (err) {
       console.error('Failed to load VaultFlow dashboard data:', err);
     }
@@ -118,7 +93,9 @@ export default function HomeScreen() {
 
   // Safe-to-spend calculation - strictly starts at 0 if no balance
   const safeToSpend = useMemo(() => {
-    const daysRemaining = 12;
+    const now = new Date();
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const daysRemaining = Math.max(1, daysInMonth - now.getDate() + 1);
     const remainingBudget = Math.max(0, totalBalance * 0.25);
     return Math.round(remainingBudget / daysRemaining);
   }, [totalBalance]);
@@ -239,47 +216,6 @@ export default function HomeScreen() {
     ].filter((group) => group.data.length > 0);
   }, [filteredTransactions]);
 
-  // Quick Log Transaction Submit
-  const handleQuickLogSubmit = async () => {
-    const amt = parseFloat(quickAmount);
-    if (isNaN(amt) || amt <= 0) {
-      Alert.alert('Invalid Amount', 'Please enter a valid expense amount.');
-      return;
-    }
-
-    if (wallets.length === 0) {
-      Alert.alert('No Wallet Found', 'Please create a wallet first.');
-      return;
-    }
-
-    if (!quickCategory) {
-      Alert.alert('No Category', 'Please select or add an expense category first.');
-      return;
-    }
-
-    try {
-      const targetWallet = wallets[0];
-      const newTxId = generateUUID();
-      const catInfo = getCategoryById(quickCategory);
-      await addTransaction(db, {
-        id: newTxId,
-        wallet_id: targetWallet.id,
-        type: 'expense',
-        amount: amt,
-        category: quickCategory,
-        description: `Quick ${catInfo.name}`,
-        date: Date.now(),
-      });
-
-      setQuickAmount('');
-      setIsQuickLogOpen(false);
-      await loadData();
-    } catch (err) {
-      console.error('Failed to log quick expense:', err);
-      Alert.alert('Error', 'Could not record quick expense.');
-    }
-  };
-
   const handleDeleteTransaction = (tx: TransactionWithWallet) => {
     Alert.alert(
       'Delete Transaction',
@@ -357,7 +293,9 @@ export default function HomeScreen() {
             </View>
 
             <View style={[styles.periodPill, { backgroundColor: isDark ? '#31353F' : '#F1F5F9' }]}>
-              <Text style={[styles.periodPillText, { color: theme.text }]}>October 2026</Text>
+              <Text style={[styles.periodPillText, { color: theme.text }]}>
+                {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+              </Text>
               <CaretDown size={moderateScale(12)} color={theme.textSecondary} weight="bold" />
             </View>
           </View>
@@ -497,8 +435,8 @@ export default function HomeScreen() {
                         col.isPeak
                           ? { backgroundColor: '#F43F5E' }
                           : isSelected
-                          ? { backgroundColor: '#10B981' }
-                          : { backgroundColor: isDark ? '#31353F' : '#E2E8F0' },
+                            ? { backgroundColor: '#10B981' }
+                            : { backgroundColor: isDark ? '#31353F' : '#E2E8F0' },
                       ]}
                     />
                   </View>
@@ -509,8 +447,8 @@ export default function HomeScreen() {
                         color: col.isPeak
                           ? '#F43F5E'
                           : isSelected
-                          ? '#10B981'
-                          : theme.textSecondary,
+                            ? '#10B981'
+                            : theme.textSecondary,
                         fontWeight: isSelected || col.isPeak ? '700' : '500',
                       },
                     ]}>
@@ -670,96 +608,6 @@ export default function HomeScreen() {
           )}
         </View>
       </ScrollView>
-
-      {/* 7. QUICK ACTION DRAWER MODAL SHEET */}
-      <Modal visible={isQuickLogOpen} transparent animationType="slide" onRequestClose={() => setIsQuickLogOpen(false)}>
-        <Pressable style={styles.modalOverlay} onPress={() => setIsQuickLogOpen(false)}>
-          <Pressable
-            style={[styles.modalSheet, { backgroundColor: isDark ? '#262A34' : '#FFFFFF' }]}
-            onPress={(e) => e.stopPropagation()}>
-            <View style={styles.sheetHandle} />
-
-            <View style={styles.sheetHeader}>
-              <View>
-                <Text style={[styles.sheetTitle, { color: theme.text }]}>Log Quick Expense</Text>
-                <Text style={[styles.sheetSub, { color: theme.textSecondary }]}>
-                  Instantly update your safe-to-spend target
-                </Text>
-              </View>
-              <Pressable
-                style={[styles.closeBtn, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}
-                onPress={() => setIsQuickLogOpen(false)}>
-                <X size={moderateScale(18)} color={theme.text} weight="bold" />
-              </Pressable>
-            </View>
-
-            {/* Currency Input Box */}
-            <View style={[styles.currencyInputBox, { backgroundColor: isDark ? '#1C1F29' : '#F8FAFC' }]}>
-              <Text style={[styles.currencySymbol, { color: theme.text }]}>₹</Text>
-              <TextInput
-                style={[styles.currencyInput, { color: theme.text }]}
-                placeholder="0.00"
-                placeholderTextColor={theme.textMuted}
-                keyboardType="decimal-pad"
-                autoFocus
-                value={quickAmount}
-                onChangeText={setQuickAmount}
-              />
-            </View>
-
-            {/* Quick Category Grid */}
-            {expenseCategories.length === 0 ? (
-              <View style={styles.quickEmptyWrap}>
-                <Text style={[styles.quickEmptyText, { color: theme.textMuted }]}>
-                  No expense categories created yet.
-                </Text>
-                <Pressable
-                  style={[styles.quickAddCategoryBtn, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}
-                  onPress={() => {
-                    setIsQuickLogOpen(false);
-                    router.push('/(modals)/add-transaction');
-                  }}>
-                  <Plus size={moderateScale(14)} color={theme.primary} weight="bold" />
-                  <Text style={[styles.quickAddCategoryBtnText, { color: theme.primary }]}>
-                    + Add Category in Transaction Modal
-                  </Text>
-                </Pressable>
-              </View>
-            ) : (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.quickCategoryRow}>
-                {expenseCategories.map((item) => {
-                  const isSelected = quickCategory === item.id;
-
-                  return (
-                    <Pressable
-                      key={item.id}
-                      style={[
-                        styles.quickCatBtn,
-                        { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' },
-                        isSelected && { borderColor: '#10B981', borderWidth: 1.5 },
-                      ]}
-                      onPress={() => setQuickCategory(item.id)}>
-                      <CategoryIcon name={item.icon} size={moderateScale(22)} color={item.color} weight="fill" />
-                      <Text style={[styles.quickCatText, { color: theme.text }]} numberOfLines={1}>
-                        {item.name}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-            )}
-
-            {/* Record Expense Button */}
-            <Pressable style={[styles.confirmRecordBtn, { backgroundColor: '#10B981' }]} onPress={handleQuickLogSubmit}>
-              <Check size={moderateScale(20)} color="#003824" weight="bold" />
-              <Text style={styles.confirmRecordText}>Record Expense</Text>
-            </Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -1223,151 +1071,5 @@ const styles = StyleSheet.create({
   emptySubtitle: {
     fontSize: fontScale(11),
     marginTop: moderateScale(4),
-  },
-
-  /* 5. FLOATING QUICK ACTION BUTTON */
-  floatingActionContainer: {
-    position: 'absolute',
-    bottom: moderateScale(16),
-    right: Spacing.md,
-    zIndex: 40,
-  },
-  quickAddFab: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: moderateScale(6),
-    paddingHorizontal: Spacing.md,
-    paddingVertical: moderateScale(10),
-    borderRadius: Radius.full,
-    shadowColor: '#10B981',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.45,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  quickAddFabText: {
-    color: '#003824',
-    fontSize: fontScale(11),
-    fontWeight: '800',
-    letterSpacing: 0.6,
-  },
-
-  /* 6. DRAWER MODAL */
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    justifyContent: 'flex-end',
-  },
-  modalSheet: {
-    borderTopLeftRadius: Radius.xl,
-    borderTopRightRadius: Radius.xl,
-    padding: Spacing.lg,
-    paddingBottom: Platform.OS === 'ios' ? moderateScale(38) : Spacing.xl,
-    gap: Spacing.md,
-  },
-  sheetHandle: {
-    width: moderateScale(40),
-    height: moderateScale(4),
-    borderRadius: Radius.full,
-    backgroundColor: '#86948A',
-    alignSelf: 'center',
-    marginBottom: Spacing.xs,
-  },
-  sheetHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  sheetTitle: {
-    fontSize: fontScale(16),
-    fontWeight: '800',
-  },
-  sheetSub: {
-    fontSize: fontScale(12),
-    marginTop: moderateScale(2),
-  },
-  closeBtn: {
-    width: moderateScale(30),
-    height: moderateScale(30),
-    borderRadius: Radius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  currencyInputBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.md,
-    borderRadius: Radius.lg,
-    gap: Spacing.xs,
-  },
-  currencySymbol: {
-    fontSize: fontScale(30),
-    fontWeight: '800',
-  },
-  currencyInput: {
-    fontSize: fontScale(32),
-    fontWeight: '800',
-    minWidth: moderateScale(120),
-    textAlign: 'center',
-  },
-  quickCategoryGrid: {
-    flexDirection: 'row',
-    gap: Spacing.xs,
-  },
-  quickCategoryRow: {
-    gap: Spacing.xs,
-    paddingVertical: moderateScale(4),
-  },
-  quickEmptyWrap: {
-    alignItems: 'center',
-    paddingVertical: Spacing.md,
-    gap: Spacing.xs,
-  },
-  quickEmptyText: {
-    fontSize: fontScale(12),
-  },
-  quickAddCategoryBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: moderateScale(4),
-    paddingHorizontal: Spacing.md,
-    paddingVertical: moderateScale(8),
-    borderRadius: Radius.full,
-  },
-  quickAddCategoryBtnText: {
-    fontSize: fontScale(12),
-    fontWeight: '700',
-  },
-  quickCatBtn: {
-    minWidth: moderateScale(72),
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.sm,
-    borderRadius: Radius.md,
-    gap: moderateScale(4),
-  },
-  quickCatText: {
-    fontSize: fontScale(11),
-    fontWeight: '600',
-  },
-  confirmRecordBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.xs,
-    paddingVertical: moderateScale(14),
-    borderRadius: Radius.lg,
-    shadowColor: '#10B981',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  confirmRecordText: {
-    color: '#003824',
-    fontSize: fontScale(15),
-    fontWeight: '700',
   },
 });
