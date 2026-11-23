@@ -65,7 +65,7 @@ export default function HomeScreen() {
     try {
       const [balanceSummary, txList, catList] = await Promise.all([
         getBalanceSummary(db),
-        getTransactions(db, 30),
+        getTransactions(db, 100),
         getCategories(db),
       ]);
 
@@ -109,43 +109,61 @@ export default function HomeScreen() {
     return safeFormatStatCurrency(val, isBalanceHidden);
   };
 
+  // Calculate active week date boundaries (Monday to Sunday)
+  const weekRange = useMemo(() => {
+    const now = new Date();
+    const currentDay = (now.getDay() + 6) % 7; // 0=Mon, 1=Tue, ..., 6=Sun
+    const thisMonday = new Date(now);
+    thisMonday.setHours(0, 0, 0, 0);
+    thisMonday.setDate(now.getDate() - currentDay);
+
+    const targetMonday = new Date(thisMonday);
+    if (activeWeekCycle === 'lastWeek') {
+      targetMonday.setDate(thisMonday.getDate() - 7);
+    }
+
+    const start = targetMonday.getTime();
+    const end = start + 7 * 86400000;
+    return { start, end };
+  }, [activeWeekCycle]);
+
   // Dynamic Weekly Spending Activity strictly computed from database transactions
   const weeklyData = useMemo(() => {
-    const days = [
-      { day: 'M', full: 'Mon', heightPct: 4, amount: 0, isPeak: false },
-      { day: 'T', full: 'Tue', heightPct: 4, amount: 0, isPeak: false },
-      { day: 'W', full: 'Wed', heightPct: 4, amount: 0, isPeak: false },
-      { day: 'T', full: 'Thu', heightPct: 4, amount: 0, isPeak: false },
-      { day: 'F', full: 'Fri', heightPct: 4, amount: 0, isPeak: false },
-      { day: 'S', full: 'Sat', heightPct: 4, amount: 0, isPeak: false },
-      { day: 'S', full: 'Sun', heightPct: 4, amount: 0, isPeak: false },
-    ];
+    const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const dayChars = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
-    const now = new Date();
-    const currentDay = (now.getDay() + 6) % 7;
-    const monday = new Date(now);
-    monday.setHours(0, 0, 0, 0);
-    monday.setDate(now.getDate() - currentDay);
-    const startOfWeek = monday.getTime();
+    const days = dayNames.map((name, idx) => {
+      const dayDate = new Date(weekRange.start + idx * 86400000);
+      const dateStr = dayDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      return {
+        day: dayChars[idx],
+        name,
+        dateStr,
+        full: `${name}, ${dateStr}`,
+        timestamp: dayDate.getTime(),
+        heightPct: 6,
+        amount: 0,
+        isPeak: false,
+      };
+    });
 
     transactions.forEach((tx) => {
-      if (tx.type === 'expense' && tx.date >= startOfWeek) {
-        const d = new Date(tx.date);
-        const dayIdx = (d.getDay() + 6) % 7;
-        if (dayIdx >= 0 && dayIdx < 7) {
-          days[dayIdx].amount += tx.amount;
+      if (tx.type === 'expense' && tx.date >= weekRange.start && tx.date < weekRange.end) {
+        const txDayIdx = Math.floor((tx.date - weekRange.start) / 86400000);
+        if (txDayIdx >= 0 && txDayIdx < 7) {
+          days[txDayIdx].amount += tx.amount;
         }
       }
     });
 
     const maxAmt = Math.max(...days.map((d) => d.amount), 0);
     days.forEach((d) => {
-      d.heightPct = maxAmt > 0 && d.amount > 0 ? Math.max(14, Math.round((d.amount / maxAmt) * 96)) : 4;
+      d.heightPct = maxAmt > 0 && d.amount > 0 ? Math.max(14, Math.round((d.amount / maxAmt) * 96)) : 6;
       d.isPeak = maxAmt > 0 && d.amount === maxAmt;
     });
 
     return days;
-  }, [transactions]);
+  }, [transactions, weekRange]);
 
   const avgPerDay = useMemo(() => {
     const totalWk = weeklyData.reduce((acc, d) => acc + d.amount, 0);
@@ -154,12 +172,15 @@ export default function HomeScreen() {
 
   // Dynamic category allocation stream computed from database
   const categoryAllocations = useMemo(() => {
-    const expenses = transactions.filter((t) => t.type === 'expense');
-    const totalExp = expenses.reduce((acc, t) => acc + t.amount, 0);
+    const cycleExpenses = transactions.filter(
+      (t) => t.type === 'expense' && t.date >= weekRange.start && t.date < weekRange.end
+    );
+    const targetExpenses = cycleExpenses.length > 0 ? cycleExpenses : transactions.filter((t) => t.type === 'expense');
+    const totalExp = targetExpenses.reduce((acc, t) => acc + t.amount, 0);
     if (totalExp === 0) return [];
 
     const map: Record<string, number> = {};
-    expenses.forEach((t) => {
+    targetExpenses.forEach((t) => {
       map[t.category] = (map[t.category] || 0) + t.amount;
     });
 
@@ -168,7 +189,7 @@ export default function HomeScreen() {
       const pct = Math.round((amt / totalExp) * 100);
       return { id: catId, name: cat.name, color: cat.color, pct, amount: amt };
     });
-  }, [transactions]);
+  }, [transactions, weekRange]);
 
   // Filter categories available from existing transactions
   const availableFilterCategories = useMemo(() => {
@@ -176,44 +197,57 @@ export default function HomeScreen() {
     return ['all', ...cats];
   }, [transactions]);
 
-  // Filtered transactions
+  // Filtered transactions reacting to week cycle, selected chart day, and category
   const filteredTransactions = useMemo(() => {
-    if (selectedFilterCat === 'all') return transactions;
-    return transactions.filter((tx) => tx.category === selectedFilterCat);
-  }, [transactions, selectedFilterCat]);
+    let list = transactions;
 
-  // Grouped by Date (Today vs Yesterday / Prior)
+    if (selectedDayIndex !== null && weeklyData[selectedDayIndex]) {
+      const dayStart = weeklyData[selectedDayIndex].timestamp;
+      const dayEnd = dayStart + 86400000;
+      list = list.filter((tx) => tx.date >= dayStart && tx.date < dayEnd);
+    } else if (activeWeekCycle === 'lastWeek') {
+      list = list.filter((tx) => tx.date >= weekRange.start && tx.date < weekRange.end);
+    }
+
+    if (selectedFilterCat !== 'all') {
+      list = list.filter((tx) => tx.category === selectedFilterCat);
+    }
+
+    return list;
+  }, [transactions, selectedDayIndex, weeklyData, activeWeekCycle, weekRange, selectedFilterCat]);
+
+  // Grouped by Date dynamically without hardcoded bounds
   const groupedTransactions = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
 
-    const todayItems: TransactionWithWallet[] = [];
-    const yesterdayItems: TransactionWithWallet[] = [];
-    const olderItems: TransactionWithWallet[] = [];
+    const groupsMap = new Map<string, TransactionWithWallet[]>();
 
     filteredTransactions.forEach((tx) => {
-      const txDate = new Date(tx.date);
-      txDate.setHours(0, 0, 0, 0);
+      const d = new Date(tx.date);
+      d.setHours(0, 0, 0, 0);
 
-      if (txDate.getTime() === today.getTime()) {
-        todayItems.push(tx);
-      } else if (txDate.getTime() === yesterday.getTime()) {
-        yesterdayItems.push(tx);
+      let title: string;
+      if (d.getTime() === today.getTime()) {
+        title = `Today, ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+      } else if (d.getTime() === yesterday.getTime()) {
+        title = `Yesterday, ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
       } else {
-        olderItems.push(tx);
+        title = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
       }
+
+      if (!groupsMap.has(title)) {
+        groupsMap.set(title, []);
+      }
+      groupsMap.get(title)!.push(tx);
     });
 
-    const todayStr = today.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    const yesterdayStr = yesterday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
-    return [
-      { title: `Today, ${todayStr}`, data: todayItems },
-      { title: `Yesterday, ${yesterdayStr}`, data: yesterdayItems },
-      { title: 'Earlier This Month', data: olderItems },
-    ].filter((group) => group.data.length > 0);
+    return Array.from(groupsMap.entries()).map(([title, data]) => ({
+      title,
+      data,
+    }));
   }, [filteredTransactions]);
 
   const handleDeleteTransaction = (tx: TransactionWithWallet) => {
@@ -381,7 +415,10 @@ export default function HomeScreen() {
             <View style={[styles.cycleToggleWrap, { backgroundColor: isDark ? '#262A34' : '#F1F5F9' }]}>
               <Pressable
                 style={[styles.cycleBtn, activeWeekCycle === 'thisWeek' && styles.cycleBtnActive]}
-                onPress={() => setActiveWeekCycle('thisWeek')}>
+                onPress={() => {
+                  setActiveWeekCycle('thisWeek');
+                  setSelectedDayIndex(null);
+                }}>
                 <Text
                   style={[
                     styles.cycleText,
@@ -392,7 +429,10 @@ export default function HomeScreen() {
               </Pressable>
               <Pressable
                 style={[styles.cycleBtn, activeWeekCycle === 'lastWeek' && styles.cycleBtnActive]}
-                onPress={() => setActiveWeekCycle('lastWeek')}>
+                onPress={() => {
+                  setActiveWeekCycle('lastWeek');
+                  setSelectedDayIndex(null);
+                }}>
                 <Text
                   style={[
                     styles.cycleText,
@@ -404,16 +444,28 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          {/* Peak Tooltip Header */}
+          {/* Peak / Selection Tooltip Header */}
           <View style={styles.peakTooltipRow}>
-            {selectedDayIndex !== null && weeklyData[selectedDayIndex] && (
-              <View style={[styles.peakBadge, { backgroundColor: isDark ? '#31353F' : '#FEE2E2' }]}>
-                <View style={[styles.peakDot, { backgroundColor: '#F43F5E' }]} />
+            {selectedDayIndex !== null && weeklyData[selectedDayIndex] ? (
+              <View style={[styles.peakBadge, { backgroundColor: isDark ? '#262A34' : '#E0F2FE' }]}>
+                <View
+                  style={[
+                    styles.peakDot,
+                    { backgroundColor: weeklyData[selectedDayIndex].isPeak ? '#F43F5E' : '#0284C7' },
+                  ]}
+                />
                 <Text style={[styles.peakText, { color: theme.text }]}>
-                  {weeklyData[selectedDayIndex].isPeak ? 'Peak ' : ''}
-                  {formatStatCurrency(weeklyData[selectedDayIndex].amount)}
+                  {weeklyData[selectedDayIndex].full}: {formatCurrency(weeklyData[selectedDayIndex].amount)}
+                  {weeklyData[selectedDayIndex].isPeak ? ' (Peak)' : ''}
                 </Text>
+                <Pressable hitSlop={8} onPress={() => setSelectedDayIndex(null)}>
+                  <Text style={[styles.clearFilterText, { color: theme.primary }]}>✕ Clear</Text>
+                </Pressable>
               </View>
+            ) : (
+              <Text style={[styles.peakHintText, { color: theme.textMuted }]}>
+                Tap any day to view details & filter ledger
+              </Text>
             )}
           </View>
 
@@ -426,7 +478,7 @@ export default function HomeScreen() {
                 <Pressable
                   key={`day-${idx}`}
                   style={styles.chartCol}
-                  onPress={() => setSelectedDayIndex(idx)}>
+                  onPress={() => setSelectedDayIndex(selectedDayIndex === idx ? null : idx)}>
                   <View style={styles.barTrack}>
                     <View
                       style={[
@@ -444,16 +496,19 @@ export default function HomeScreen() {
                     style={[
                       styles.barLabel,
                       {
-                        color: col.isPeak
-                          ? '#F43F5E'
-                          : isSelected
-                            ? '#10B981'
+                        color: isSelected
+                          ? '#10B981'
+                          : col.isPeak
+                            ? '#F43F5E'
                             : theme.textSecondary,
                         fontWeight: isSelected || col.isPeak ? '700' : '500',
                       },
                     ]}>
                     {col.day}
                   </Text>
+                  {isSelected && (
+                    <View style={[styles.activeDayDot, { backgroundColor: '#10B981' }]} />
+                  )}
                 </Pressable>
               );
             })}
@@ -462,17 +517,32 @@ export default function HomeScreen() {
           {/* Category Allocation Pill Stream */}
           <View style={styles.allocationPillsRow}>
             {categoryAllocations.length > 0 ? (
-              categoryAllocations.map((alloc) => (
-                <View key={alloc.id} style={[styles.allocPill, { backgroundColor: isDark ? '#262A34' : '#F1F5F9' }]}>
-                  <View style={[styles.allocDot, { backgroundColor: alloc.color }]} />
-                  <Text style={[styles.allocText, { color: theme.text }]}>
-                    {alloc.name} {alloc.pct}%
-                  </Text>
-                </View>
-              ))
+              categoryAllocations.map((alloc) => {
+                const isSelected = selectedFilterCat === alloc.id;
+                return (
+                  <Pressable
+                    key={alloc.id}
+                    style={[
+                      styles.allocPill,
+                      {
+                        backgroundColor: isSelected
+                          ? (isDark ? 'rgba(16, 185, 129, 0.25)' : '#D1FAE5')
+                          : (isDark ? '#262A34' : '#F1F5F9'),
+                        borderColor: isSelected ? '#10B981' : 'transparent',
+                        borderWidth: 1,
+                      },
+                    ]}
+                    onPress={() => setSelectedFilterCat(isSelected ? 'all' : alloc.id)}>
+                    <View style={[styles.allocDot, { backgroundColor: alloc.color }]} />
+                    <Text style={[styles.allocText, { color: theme.text }]}>
+                      {alloc.name} {alloc.pct}%
+                    </Text>
+                  </Pressable>
+                );
+              })
             ) : (
               <Text style={{ color: theme.textMuted, fontSize: fontScale(11) }}>
-                No category expenses logged yet (0% allocated)
+                No category expenses logged for this cycle
               </Text>
             )}
           </View>
@@ -484,7 +554,11 @@ export default function HomeScreen() {
             <View>
               <Text style={[styles.sectionTitle, { color: theme.text }]}>Recent Transactions</Text>
               <Text style={[styles.activitySub, { color: theme.textSecondary }]}>
-                Real-time ledger updates
+                {selectedDayIndex !== null && weeklyData[selectedDayIndex]
+                  ? `Filtered: ${weeklyData[selectedDayIndex].full}`
+                  : activeWeekCycle === 'lastWeek'
+                    ? `Showing: Last Week (${weeklyData[0]?.dateStr} - ${weeklyData[6]?.dateStr})`
+                    : 'Real-time ledger updates'}
               </Text>
             </View>
             <Pressable onPress={() => router.push('/(tabs)/analytics')}>
@@ -905,6 +979,15 @@ const styles = StyleSheet.create({
     fontSize: fontScale(11),
     fontWeight: '700',
   },
+  peakHintText: {
+    fontSize: fontScale(11),
+    fontStyle: 'italic',
+  },
+  clearFilterText: {
+    fontSize: fontScale(11),
+    fontWeight: '700',
+    marginLeft: Spacing.xs,
+  },
   chartBarsContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -931,6 +1014,12 @@ const styles = StyleSheet.create({
   },
   barLabel: {
     fontSize: fontScale(11),
+  },
+  activeDayDot: {
+    width: moderateScale(4),
+    height: moderateScale(4),
+    borderRadius: Radius.full,
+    marginTop: moderateScale(2),
   },
   allocationPillsRow: {
     flexDirection: 'row',
