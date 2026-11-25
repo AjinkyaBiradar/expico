@@ -4,6 +4,7 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   Bell,
+  CalendarBlank,
   CaretDown,
   Eye,
   EyeSlash,
@@ -35,6 +36,8 @@ import {
 } from '@/db/queries';
 import {
   formatCurrency as safeFormatCurrency,
+  formatDisplayDate,
+  formatDisplayTime,
   formatStatCurrency as safeFormatStatCurrency,
 } from '@/utils/formatters';
 import { fontScale, moderateScale, Radius, Spacing } from '@/utils/styling';
@@ -56,6 +59,7 @@ export default function HomeScreen() {
   // UI state
   const [isBalanceHidden, setIsBalanceHidden] = useState<boolean>(false);
   const [selectedFilterCat, setSelectedFilterCat] = useState<string>('all');
+  const [selectedMonthFilter, setSelectedMonthFilter] = useState<string>('all');
   const [activeWeekCycle, setActiveWeekCycle] = useState<'thisWeek' | 'lastWeek'>('thisWeek');
   const [selectedDayIndex, setSelectedDayIndex] = useState<number | null>(null);
 
@@ -64,7 +68,7 @@ export default function HomeScreen() {
     try {
       const [balanceSummary, txList, catList] = await Promise.all([
         getBalanceSummary(db),
-        getTransactions(db, 100),
+        getTransactions(db, 1000),
         getCategories(db),
       ]);
 
@@ -187,7 +191,17 @@ export default function HomeScreen() {
     return ['all', ...cats];
   }, [transactions]);
 
-  // Filtered transactions reacting to week cycle, selected chart day, and category
+  // Distinct months present in transactions (e.g. "All Months", "Nov 2026", "Oct 2026")
+  const availableMonths = useMemo(() => {
+    const monthsSet = new Set<string>();
+    transactions.forEach((tx) => {
+      const d = new Date(tx.date);
+      monthsSet.add(d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }));
+    });
+    return ['all', ...Array.from(monthsSet)];
+  }, [transactions]);
+
+  // Filtered transactions reacting to selected chart day, month filter, and category
   const filteredTransactions = useMemo(() => {
     let list = transactions;
 
@@ -195,8 +209,13 @@ export default function HomeScreen() {
       const dayStart = weeklyData[selectedDayIndex].timestamp;
       const dayEnd = dayStart + 86400000;
       list = list.filter((tx) => tx.date >= dayStart && tx.date < dayEnd);
-    } else if (activeWeekCycle === 'lastWeek') {
-      list = list.filter((tx) => tx.date >= weekRange.start && tx.date < weekRange.end);
+    }
+
+    if (selectedMonthFilter !== 'all') {
+      list = list.filter((tx) => {
+        const d = new Date(tx.date);
+        return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) === selectedMonthFilter;
+      });
     }
 
     if (selectedFilterCat !== 'all') {
@@ -204,9 +223,9 @@ export default function HomeScreen() {
     }
 
     return list;
-  }, [transactions, selectedDayIndex, weeklyData, activeWeekCycle, weekRange, selectedFilterCat]);
+  }, [transactions, selectedDayIndex, weeklyData, selectedMonthFilter, selectedFilterCat]);
 
-  // Grouped by Date dynamically without hardcoded bounds
+  // Grouped by Date and Month dynamically across all months
   const groupedTransactions = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -221,11 +240,11 @@ export default function HomeScreen() {
 
       let title: string;
       if (d.getTime() === today.getTime()) {
-        title = `Today, ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+        title = `Today • ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
       } else if (d.getTime() === yesterday.getTime()) {
-        title = `Yesterday, ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+        title = `Yesterday • ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
       } else {
-        title = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        title = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
       }
 
       if (!groupsMap.has(title)) {
@@ -529,54 +548,97 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* 5. ALL TRANSACTIONS DONE (RECENT TRANSACTIONS) */}
+        {/* 5. ALL TRANSACTIONS (WITH DATE & ALL MONTHS) */}
         <View style={styles.transactionsSection}>
           <View style={styles.txHeaderRow}>
             <View>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>Recent Transactions</Text>
+              <View style={styles.sectionTitleWithCount}>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>All Transactions</Text>
+                <View style={[styles.countBadge, { backgroundColor: isDark ? '#262A34' : '#F1F5F9' }]}>
+                  <Text style={[styles.countBadgeText, { color: theme.primary }]}>
+                    {filteredTransactions.length}
+                  </Text>
+                </View>
+              </View>
               <Text style={[styles.activitySub, { color: theme.textSecondary }]}>
                 {selectedDayIndex !== null && weeklyData[selectedDayIndex]
                   ? `Filtered: ${weeklyData[selectedDayIndex].full}`
-                  : activeWeekCycle === 'lastWeek'
-                    ? `Showing: Last Week (${weeklyData[0]?.dateStr} - ${weeklyData[6]?.dateStr})`
-                    : 'Real-time ledger updates'}
+                  : selectedMonthFilter !== 'all'
+                    ? `Showing ${selectedMonthFilter} entries`
+                    : 'All months with verified date logs'}
               </Text>
             </View>
             <Pressable onPress={() => router.push('/(tabs)/analytics')}>
-              <Text style={[styles.seeAllText, { color: theme.primary }]}>SEE ALL</Text>
+              <Text style={[styles.seeAllText, { color: theme.primary }]}>ANALYTICS</Text>
             </Pressable>
           </View>
 
-          {/* Filter Category Scroll Bar */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterPillsScroll}>
-            {availableFilterCategories.map((cat) => {
-              const active = selectedFilterCat === cat;
-              const catInfo = cat !== 'all' ? getCategoryById(cat) : null;
-              const label = cat === 'all' ? 'All' : catInfo?.name || cat;
+          {/* Filters: Month Selector and Category Selector */}
+          <View style={styles.filterScrollsWrap}>
+            {/* Month Filter Scroll Bar */}
+            {availableMonths.length > 2 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterPillsScroll}>
+                {availableMonths.map((m) => {
+                  const active = selectedMonthFilter === m;
+                  return (
+                    <Pressable
+                      key={`m-${m}`}
+                      style={[
+                        styles.monthFilterBtn,
+                        active
+                          ? { backgroundColor: theme.primary }
+                          : { backgroundColor: isDark ? '#262A34' : '#F1F5F9' },
+                      ]}
+                      onPress={() => setSelectedMonthFilter(m)}>
+                      <CalendarBlank
+                        size={moderateScale(12)}
+                        color={active ? '#003824' : theme.textSecondary}
+                        weight={active ? 'bold' : 'regular'}
+                      />
+                      <Text
+                        style={[
+                          styles.monthFilterText,
+                          { color: active ? '#003824' : theme.textSecondary, fontWeight: active ? '700' : '600' },
+                        ]}>
+                        {m === 'all' ? 'All Months' : m}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            )}
 
-              return (
-                <Pressable
-                  key={cat}
-                  style={[
-                    styles.categoryFilterBtn,
-                    active
-                      ? { backgroundColor: '#10B981' }
-                      : { backgroundColor: isDark ? '#262A34' : '#F1F5F9' },
-                  ]}
-                  onPress={() => setSelectedFilterCat(cat)}>
-                  <Text
+            {/* Filter Category Scroll Bar */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterPillsScroll}>
+              {availableFilterCategories.map((cat) => {
+                const active = selectedFilterCat === cat;
+                const catInfo = cat !== 'all' ? getCategoryById(cat) : null;
+                const label = cat === 'all' ? 'All Categories' : catInfo?.name || cat;
+
+                return (
+                  <Pressable
+                    key={cat}
                     style={[
-                      styles.categoryFilterText,
-                      { color: active ? '#003824' : theme.textSecondary, fontWeight: active ? '700' : '600' },
-                    ]}>
-                    {label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+                      styles.categoryFilterBtn,
+                      active
+                        ? { backgroundColor: '#10B981' }
+                        : { backgroundColor: isDark ? '#262A34' : '#F1F5F9' },
+                    ]}
+                    onPress={() => setSelectedFilterCat(cat)}>
+                    <Text
+                      style={[
+                        styles.categoryFilterText,
+                        { color: active ? '#003824' : theme.textSecondary, fontWeight: active ? '700' : '600' },
+                      ]}>
+                      {label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
 
-          {/* Grouped Transactions List */}
+          {/* Grouped Transactions List Across All Months */}
           {groupedTransactions.length > 0 ? (
             groupedTransactions.map((group, gIdx) => (
               <View key={`group-${gIdx}`} style={styles.dateGroupContainer}>
@@ -619,7 +681,7 @@ export default function HomeScreen() {
                               </View>
                             </View>
                             <Text style={[styles.txSubtext, { color: theme.textMuted }]}>
-                              {new Date(tx.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} •{' '}
+                              {formatDisplayDate(tx.date)} • {formatDisplayTime(tx.date)} •{' '}
                               {tx.wallet_name || 'Main Wallet'}
                             </Text>
                           </View>
@@ -657,7 +719,7 @@ export default function HomeScreen() {
             <View style={[styles.emptyContainer, { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF' }]}>
               <Text style={[styles.emptyTitle, { color: theme.text }]}>No Transactions Found</Text>
               <Text style={[styles.emptySubtitle, { color: theme.textMuted }]}>
-                No expenses matched the &quot;{selectedFilterCat}&quot; category.
+                No entries found for the selected month or category.
               </Text>
             </View>
           )}
@@ -994,10 +1056,38 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  sectionTitleWithCount: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  countBadge: {
+    paddingHorizontal: moderateScale(7),
+    paddingVertical: moderateScale(2),
+    borderRadius: Radius.full,
+  },
+  countBadgeText: {
+    fontSize: fontScale(10),
+    fontWeight: '800',
+  },
   seeAllText: {
     fontSize: fontScale(11),
     fontWeight: '800',
     letterSpacing: 0.8,
+  },
+  filterScrollsWrap: {
+    gap: moderateScale(4),
+  },
+  monthFilterBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: moderateScale(4),
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: moderateScale(5),
+    borderRadius: Radius.full,
+  },
+  monthFilterText: {
+    fontSize: fontScale(11),
   },
   filterPillsScroll: {
     gap: Spacing.xs,
