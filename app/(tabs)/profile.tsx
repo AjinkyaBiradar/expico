@@ -4,10 +4,11 @@ import { useSQLiteContext } from 'expo-sqlite';
 import {
   Bell,
   CaretRight,
-  CurrencyInr,
+  Check,
   Database,
   DeviceMobile,
   EyeSlash,
+  Globe,
   LockKey,
   Moon,
   Plus,
@@ -17,11 +18,12 @@ import {
   Trash,
   User,
   Wallet as WalletIcon,
+  X,
 } from 'phosphor-react-native';
 import React, { useState } from 'react';
 import {
   Alert,
-  Appearance,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -35,19 +37,24 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Colors } from '@/constants/colors';
 import { clearAllTransactions } from '@/db/queries';
+import { useSettings } from '@/utils/settings';
 import { fontScale, moderateScale, Radius, Spacing } from '@/utils/styling';
 
 export default function ProfileScreen() {
   const router = useRouter();
   const db = useSQLiteContext();
   const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const { currency, currencies, themePreference, setCurrency, setThemePreference } = useSettings();
+
+  const isDark =
+    themePreference === 'dark' || (themePreference === 'system' && colorScheme === 'dark');
   const theme = isDark ? Colors.dark : Colors.light;
 
   const [isFullScreen, setIsFullScreen] = useState(true);
   const [isBiometricEnabled, setIsBiometricEnabled] = useState(false);
   const [hideBalancesByDefault, setHideBalancesByDefault] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [showCurrencyModal, setShowCurrencyModal] = useState(false);
 
   const toggleFullScreen = (value: boolean) => {
     setIsFullScreen(value);
@@ -62,17 +69,20 @@ export default function ProfileScreen() {
 
   const handleClearAllTransactions = () => {
     Alert.alert(
-      'Clear All Transactions',
-      'Are you sure you want to permanently delete all transactions and reset your wallet balance to ₹0.00? This cannot be undone.',
+      '🤖 Smart Ledger Assistant',
+      `Are you sure you want to permanently clear all transactions and reset your wallets to ${currency.symbol}0.00? This cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Clear All',
+          text: 'Clear All Data',
           style: 'destructive',
           onPress: async () => {
             try {
               await clearAllTransactions(db);
-              Alert.alert('Cleared', 'All transactions have been deleted and balances reset to ₹0.00.');
+              Alert.alert(
+                '✨ Vault Reset',
+                `All transaction history was deleted and balances reset to ${currency.symbol}0.00.`
+              );
             } catch (err) {
               console.error('Failed to clear transactions:', err);
               Alert.alert('Error', 'Failed to clear transactions. Please try again.');
@@ -134,7 +144,7 @@ export default function ProfileScreen() {
         <View style={[styles.sectionCard, { backgroundColor: isDark ? '#181B25' : '#FFFFFF', borderColor: theme.border }]}>
           <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>DISPLAY & EXPERIENCE</Text>
 
-          {/* Theme Button Row */}
+          {/* Theme Button Row with Permanent Persistence */}
           <View style={styles.settingRow}>
             <View style={styles.settingLeft}>
               <View style={[styles.iconWrap, { backgroundColor: isDark ? 'rgba(139, 92, 246, 0.15)' : 'rgba(245, 158, 11, 0.15)' }]}>
@@ -147,7 +157,11 @@ export default function ProfileScreen() {
               <View>
                 <Text style={[styles.settingLabel, { color: theme.text }]}>App Theme</Text>
                 <Text style={[styles.settingDesc, { color: theme.textSecondary }]}>
-                  {isDark ? 'Dark theme active' : 'Light theme active'}
+                  {themePreference === 'dark'
+                    ? 'Permanent Dark mode'
+                    : themePreference === 'light'
+                    ? 'Permanent Light mode'
+                    : 'System theme'}
                 </Text>
               </View>
             </View>
@@ -156,18 +170,21 @@ export default function ProfileScreen() {
               <Pressable
                 style={[
                   styles.themePill,
-                  !isDark && [styles.themePillActive, { backgroundColor: '#FFFFFF' }],
+                  themePreference === 'light' && [styles.themePillActive, { backgroundColor: '#FFFFFF' }],
                 ]}
-                onPress={() => Appearance.setColorScheme('light')}>
+                onPress={() => setThemePreference('light')}>
                 <Sun
                   size={moderateScale(14)}
-                  color={!isDark ? '#F59E0B' : theme.textMuted}
-                  weight={!isDark ? 'fill' : 'regular'}
+                  color={themePreference === 'light' ? '#F59E0B' : theme.textMuted}
+                  weight={themePreference === 'light' ? 'fill' : 'regular'}
                 />
                 <Text
                   style={[
                     styles.themePillText,
-                    { color: !isDark ? '#0F172A' : theme.textMuted, fontWeight: !isDark ? '800' : '600' },
+                    {
+                      color: themePreference === 'light' ? '#0F172A' : theme.textMuted,
+                      fontWeight: themePreference === 'light' ? '800' : '600',
+                    },
                   ]}>
                   Light
                 </Text>
@@ -176,18 +193,21 @@ export default function ProfileScreen() {
               <Pressable
                 style={[
                   styles.themePill,
-                  isDark && [styles.themePillActive, { backgroundColor: '#262A34' }],
+                  themePreference === 'dark' && [styles.themePillActive, { backgroundColor: '#262A34' }],
                 ]}
-                onPress={() => Appearance.setColorScheme('dark')}>
+                onPress={() => setThemePreference('dark')}>
                 <Moon
                   size={moderateScale(14)}
-                  color={isDark ? '#A78BFA' : theme.textMuted}
-                  weight={isDark ? 'fill' : 'regular'}
+                  color={themePreference === 'dark' ? '#A78BFA' : theme.textMuted}
+                  weight={themePreference === 'dark' ? 'fill' : 'regular'}
                 />
                 <Text
                   style={[
                     styles.themePillText,
-                    { color: isDark ? '#FFFFFF' : theme.textMuted, fontWeight: isDark ? '800' : '600' },
+                    {
+                      color: themePreference === 'dark' ? '#FFFFFF' : theme.textMuted,
+                      fontWeight: themePreference === 'dark' ? '800' : '600',
+                    },
                   ]}>
                   Dark
                 </Text>
@@ -213,18 +233,31 @@ export default function ProfileScreen() {
             />
           </View>
 
-          <View style={styles.settingRow}>
+          {/* Primary Currency Row - Interactive Selector */}
+          <Pressable
+            style={({ pressed }) => [
+              styles.settingRow,
+              { opacity: pressed ? 0.7 : 1 },
+            ]}
+            onPress={() => setShowCurrencyModal(true)}>
             <View style={styles.settingLeft}>
               <View style={[styles.iconWrap, { backgroundColor: 'rgba(99, 102, 241, 0.15)' }]}>
-                <CurrencyInr size={moderateScale(18)} color="#6366F1" weight="bold" />
+                <Globe size={moderateScale(18)} color="#6366F1" weight="bold" />
               </View>
               <View>
                 <Text style={[styles.settingLabel, { color: theme.text }]}>Primary Currency</Text>
-                <Text style={[styles.settingDesc, { color: theme.textSecondary }]}>Indian Rupee (₹ INR)</Text>
+                <Text style={[styles.settingDesc, { color: theme.textSecondary }]}>
+                  {currency.name} ({currency.symbol} {currency.code})
+                </Text>
               </View>
             </View>
-            <CaretRight size={moderateScale(18)} color={theme.textMuted} weight="bold" />
-          </View>
+            <View style={styles.currencyBadgeRow}>
+              <View style={[styles.currencySymbolBadge, { backgroundColor: isDark ? '#262A34' : '#F1F5F9' }]}>
+                <Text style={[styles.currencyBadgeText, { color: theme.primary }]}>{currency.symbol}</Text>
+              </View>
+              <CaretRight size={moderateScale(18)} color={theme.textMuted} weight="bold" />
+            </View>
+          </Pressable>
         </View>
 
         {/* Privacy & Security */}
@@ -316,7 +349,7 @@ export default function ProfileScreen() {
               <View>
                 <Text style={[styles.settingLabel, { color: '#EF4444' }]}>Clear All Transactions</Text>
                 <Text style={[styles.settingDesc, { color: theme.textSecondary }]}>
-                  Reset transaction logs & balances to ₹0.00
+                  Reset transaction logs & balances to {currency.symbol}0.00
                 </Text>
               </View>
             </View>
@@ -345,6 +378,84 @@ export default function ProfileScreen() {
           Expico VaultFlow v1.0.0 • Mobile-First Engine
         </Text>
       </ScrollView>
+
+      {/* CURRENCY SELECTION MODAL */}
+      <Modal
+        visible={showCurrencyModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowCurrencyModal(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowCurrencyModal(false)}>
+          <Pressable
+            style={[
+              styles.currencyModalContent,
+              { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF', borderColor: theme.border },
+            ]}
+            onPress={(e) => e.stopPropagation()}>
+            <View style={styles.currencyModalHeader}>
+              <View>
+                <Text style={[styles.currencyModalTitle, { color: theme.text }]}>Select Currency</Text>
+                <Text style={[styles.currencyModalSub, { color: theme.textSecondary }]}>
+                  Used for balances, ledger entries, and statistics
+                </Text>
+              </View>
+              <Pressable
+                style={[styles.modalCloseBtn, { backgroundColor: isDark ? '#262A34' : '#F1F5F9' }]}
+                onPress={() => setShowCurrencyModal(false)}>
+                <X size={moderateScale(18)} color={theme.text} weight="bold" />
+              </Pressable>
+            </View>
+
+            <ScrollView style={styles.currencyListScroll} showsVerticalScrollIndicator={false}>
+              {currencies.map((c) => {
+                const isSelected = c.code === currency.code;
+                return (
+                  <Pressable
+                    key={c.code}
+                    style={[
+                      styles.currencyItemRow,
+                      {
+                        backgroundColor: isSelected
+                          ? isDark ? '#262A34' : '#E2E8F0'
+                          : isDark ? '#181B25' : '#F8FAFC',
+                        borderColor: isSelected ? theme.primary : theme.border,
+                      },
+                    ]}
+                    onPress={async () => {
+                      await setCurrency(c.code);
+                      setShowCurrencyModal(false);
+                      Alert.alert(
+                        '✨ Currency Updated',
+                        `Active currency set to ${c.name} (${c.symbol} ${c.code}). All values have updated.`
+                      );
+                    }}>
+                    <View style={[styles.currencyCodePill, { backgroundColor: isSelected ? theme.primary : isDark ? '#262A34' : '#E2E8F0' }]}>
+                      <Text style={[styles.currencyCodeText, { color: isSelected ? '#003824' : theme.text }]}>
+                        {c.symbol}
+                      </Text>
+                    </View>
+
+                    <View style={styles.currencyInfo}>
+                      <Text style={[styles.currencyName, { color: theme.text, fontWeight: isSelected ? '800' : '600' }]}>
+                        {c.name}
+                      </Text>
+                      <Text style={[styles.currencyCodeSub, { color: theme.textSecondary }]}>
+                        {c.code} • Local format
+                      </Text>
+                    </View>
+
+                    {isSelected && (
+                      <View style={[styles.currencySelectedCheck, { backgroundColor: theme.primary }]}>
+                        <Check size={moderateScale(14)} color="#003824" weight="bold" />
+                      </View>
+                    )}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -358,7 +469,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
+    paddingVertical: Spacing.sm,
   },
   headerLeft: {
     flexDirection: 'row',
@@ -366,50 +477,49 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   avatarCircle: {
-    width: moderateScale(34),
-    height: moderateScale(34),
+    width: moderateScale(36),
+    height: moderateScale(36),
     borderRadius: Radius.full,
     alignItems: 'center',
     justifyContent: 'center',
   },
   appBranding: {
     fontSize: fontScale(10),
-    fontWeight: '700',
-    letterSpacing: 1.2,
+    fontWeight: '800',
+    letterSpacing: 1.5,
   },
   screenTitle: {
     fontSize: fontScale(18),
     fontWeight: '800',
-    letterSpacing: -0.3,
+    letterSpacing: -0.5,
   },
   iconButton: {
-    width: moderateScale(40),
-    height: moderateScale(40),
+    width: moderateScale(36),
+    height: moderateScale(36),
     borderRadius: Radius.full,
     alignItems: 'center',
     justifyContent: 'center',
   },
   scrollContent: {
-    paddingHorizontal: Spacing.md,
-    paddingTop: Spacing.sm,
-    paddingBottom: moderateScale(90),
+    padding: Spacing.md,
+    paddingBottom: Spacing.xxxl,
     gap: Spacing.md,
   },
   userCard: {
     borderRadius: Radius.xl,
     padding: Spacing.md,
     borderWidth: 1,
-    overflow: 'hidden',
     position: 'relative',
+    overflow: 'hidden',
   },
   userCardGlow: {
     position: 'absolute',
-    top: -moderateScale(40),
-    right: -moderateScale(40),
-    width: moderateScale(120),
-    height: moderateScale(120),
-    borderRadius: Radius.full,
-    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    top: -50,
+    right: -50,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(16, 185, 129, 0.08)',
   },
   userRow: {
     flexDirection: 'row',
@@ -417,14 +527,14 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   bigAvatar: {
-    width: moderateScale(50),
-    height: moderateScale(50),
+    width: moderateScale(48),
+    height: moderateScale(48),
     borderRadius: Radius.full,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarInitial: {
-    fontSize: fontScale(22),
+    fontSize: fontScale(20),
     fontWeight: '800',
     color: '#003824',
   },
@@ -438,42 +548,41 @@ const styles = StyleSheet.create({
   },
   userName: {
     fontSize: fontScale(16),
-    fontWeight: '800',
+    fontWeight: '700',
   },
   proBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: moderateScale(3),
+    gap: 3,
     paddingHorizontal: moderateScale(6),
     paddingVertical: moderateScale(2),
     borderRadius: Radius.full,
   },
   proBadgeText: {
     color: '#10B981',
-    fontSize: fontScale(9),
+    fontSize: fontScale(10),
     fontWeight: '800',
+    letterSpacing: 0.5,
   },
   userSub: {
     fontSize: fontScale(12),
-    marginTop: moderateScale(2),
+    marginTop: 2,
   },
   sectionCard: {
     borderRadius: Radius.xl,
     padding: Spacing.md,
     borderWidth: 1,
-    gap: Spacing.sm,
+    gap: Spacing.md,
   },
   sectionTitle: {
-    fontSize: fontScale(10),
+    fontSize: fontScale(11),
     fontWeight: '800',
-    letterSpacing: 0.8,
-    marginBottom: Spacing.xs,
+    letterSpacing: 1,
   },
   settingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: Spacing.xs,
   },
   settingLeft: {
     flexDirection: 'row',
@@ -490,11 +599,25 @@ const styles = StyleSheet.create({
   },
   settingLabel: {
     fontSize: fontScale(13),
-    fontWeight: '700',
+    fontWeight: '600',
   },
   settingDesc: {
     fontSize: fontScale(11),
-    marginTop: moderateScale(1),
+    marginTop: 1,
+  },
+  currencyBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  currencySymbolBadge: {
+    paddingHorizontal: moderateScale(8),
+    paddingVertical: moderateScale(2),
+    borderRadius: Radius.md,
+  },
+  currencyBadgeText: {
+    fontSize: fontScale(12),
+    fontWeight: '800',
   },
   dbStatus: {
     fontSize: fontScale(11),
@@ -548,5 +671,76 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: fontScale(11),
     marginTop: Spacing.sm,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'flex-end',
+  },
+  currencyModalContent: {
+    borderTopLeftRadius: Radius.xxl,
+    borderTopRightRadius: Radius.xxl,
+    borderWidth: 1,
+    padding: Spacing.lg,
+    maxHeight: '80%',
+    gap: Spacing.md,
+  },
+  currencyModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  currencyModalTitle: {
+    fontSize: fontScale(17),
+    fontWeight: '800',
+  },
+  currencyModalSub: {
+    fontSize: fontScale(11),
+  },
+  modalCloseBtn: {
+    width: moderateScale(30),
+    height: moderateScale(30),
+    borderRadius: Radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  currencyListScroll: {
+    maxHeight: moderateScale(380),
+  },
+  currencyItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.sm,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    marginBottom: Spacing.xs,
+    gap: Spacing.sm,
+  },
+  currencyCodePill: {
+    width: moderateScale(36),
+    height: moderateScale(36),
+    borderRadius: Radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  currencyCodeText: {
+    fontSize: fontScale(14),
+    fontWeight: '800',
+  },
+  currencyInfo: {
+    flex: 1,
+  },
+  currencyName: {
+    fontSize: fontScale(13),
+  },
+  currencyCodeSub: {
+    fontSize: fontScale(11),
+  },
+  currencySelectedCheck: {
+    width: moderateScale(24),
+    height: moderateScale(24),
+    borderRadius: Radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

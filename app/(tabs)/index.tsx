@@ -7,7 +7,6 @@ import {
   CaretDown,
   Eye,
   EyeSlash,
-  ShieldCheck,
   Trash,
   User,
 } from 'phosphor-react-native';
@@ -90,15 +89,6 @@ export default function HomeScreen() {
     await loadData();
     setRefreshing(false);
   };
-
-  // Safe-to-spend calculation - strictly starts at 0 if no balance
-  const safeToSpend = useMemo(() => {
-    const now = new Date();
-    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    const daysRemaining = Math.max(1, daysInMonth - now.getDate() + 1);
-    const remainingBudget = Math.max(0, totalBalance * 0.25);
-    return Math.round(remainingBudget / daysRemaining);
-  }, [totalBalance]);
 
   // Currency format with null/undefined safety
   const formatCurrency = (val: number | null | undefined) => {
@@ -251,21 +241,30 @@ export default function HomeScreen() {
   }, [filteredTransactions]);
 
   const handleDeleteTransaction = (tx: TransactionWithWallet) => {
+    const isExpense = tx.type === 'expense';
+    const impactNote = isExpense
+      ? `Crediting ${formatCurrency(tx.amount)} back to your "${tx.wallet_name}" wallet.`
+      : `Deducting ${formatCurrency(tx.amount)} from your "${tx.wallet_name}" wallet.`;
+
     Alert.alert(
-      'Delete Transaction',
-      `Are you sure you want to delete this ${tx.type === 'income' ? 'income' : 'expense'} transaction of ${formatCurrency(tx.amount)}? Your account balance will be updated automatically.`,
+      '🤖 Smart Ledger Assistant',
+      `You are about to remove this ${tx.type.toUpperCase()} transaction:\n\n• Category: ${tx.category}\n• Amount: ${formatCurrency(tx.amount)}\n• Account: ${tx.wallet_name}\n\n${impactNote}\n\nWould you like to confirm this deletion?`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'Keep Transaction', style: 'cancel' },
         {
-          text: 'Delete',
+          text: 'Confirm Delete',
           style: 'destructive',
           onPress: async () => {
             try {
               await deleteTransaction(db, tx.id);
               await loadData();
+              Alert.alert(
+                '✨ Ledger Synchronized',
+                `Successfully removed the transaction.\n${formatCurrency(tx.amount)} was adjusted in "${tx.wallet_name}".`
+              );
             } catch (err) {
               console.error('Failed to delete transaction:', err);
-              Alert.alert('Error', 'Failed to delete transaction. Please try again.');
+              Alert.alert('Assistant Error', 'Failed to delete transaction. Please try again.');
             }
           },
         },
@@ -345,24 +344,6 @@ export default function HomeScreen() {
               <Text style={styles.momBadgeText}>Ledger Active</Text>
             </View>
             <Text style={[styles.momSubtext, { color: theme.textSecondary }]}>Real-time Balance</Text>
-          </View>
-
-          {/* Safe-to-Spend Pill Banner */}
-          <View style={[styles.safeToSpendBanner, { backgroundColor: isDark ? '#181B25' : '#F8FAFC' }]}>
-            <View style={styles.safeLeft}>
-              <View style={[styles.shieldCircle, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
-                <ShieldCheck size={moderateScale(14)} color="#10B981" weight="fill" />
-              </View>
-              <Text style={[styles.safeLabel, { color: theme.textSecondary }]}>Daily Safe-to-Spend</Text>
-            </View>
-            <View style={styles.safeRight}>
-              <Text style={[styles.safeAmount, { color: theme.text }]}>
-                {formatStatCurrency(safeToSpend)}
-              </Text>
-              <View style={[styles.optimalBadge, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
-                <Text style={styles.optimalText}>Optimal</Text>
-              </View>
-            </View>
           </View>
         </View>
 
@@ -828,48 +809,6 @@ const styles = StyleSheet.create({
   },
   momSubtext: {
     fontSize: fontScale(11),
-  },
-  safeToSpendBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: Spacing.sm,
-    borderRadius: Radius.lg,
-  },
-  safeLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
-  shieldCircle: {
-    width: moderateScale(24),
-    height: moderateScale(24),
-    borderRadius: Radius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  safeLabel: {
-    fontSize: fontScale(12),
-    fontWeight: '600',
-  },
-  safeRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
-  safeAmount: {
-    fontSize: fontScale(13),
-    fontWeight: '700',
-  },
-  optimalBadge: {
-    paddingHorizontal: moderateScale(6),
-    paddingVertical: moderateScale(2),
-    borderRadius: Radius.full,
-  },
-  optimalText: {
-    color: '#10B981',
-    fontSize: fontScale(10),
-    fontWeight: '700',
   },
 
   /* 2. SPLIT CARDS */

@@ -17,6 +17,7 @@ import { CategoryIcon } from '@/components/CategoryIcon';
 import { Colors } from '@/constants/colors';
 import { addWallet } from '@/db/queries';
 import { generateUUID } from '@/utils/formatters';
+import { useSettings } from '@/utils/settings';
 import { fontScale, moderateScale, Radius, Spacing } from '@/utils/styling';
 
 export const WALLET_ICONS = [
@@ -31,6 +32,7 @@ export default function AddWalletModal() {
   const db = useSQLiteContext();
   const colorScheme = useColorScheme();
   const theme = colorScheme === 'dark' ? Colors.dark : Colors.light;
+  const { currency } = useSettings();
 
   const [name, setName] = useState('');
   const [initialBalance, setInitialBalance] = useState('');
@@ -88,7 +90,7 @@ export default function AddWalletModal() {
 
       {/* Starting Balance */}
       <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-        <Text style={[styles.label, { color: theme.textSecondary }]}>Initial Balance (₹)</Text>
+        <Text style={[styles.label, { color: theme.textSecondary }]}>Initial Balance ({currency.symbol})</Text>
         <TextInput
           style={[styles.amountInput, { color: theme.text }]}
           placeholder="0.00"

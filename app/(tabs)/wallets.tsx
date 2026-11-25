@@ -30,6 +30,7 @@ import { registerCategories } from '@/constants/categories';
 import { Colors } from '@/constants/colors';
 import { addTransaction, deleteWallet, getCategories, getWallets, Wallet } from '@/db/queries';
 import { formatCurrency, generateUUID } from '@/utils/formatters';
+import { useSettings } from '@/utils/settings';
 import { fontScale, moderateScale, Radius, Spacing } from '@/utils/styling';
 
 export default function WalletsScreen() {
@@ -38,6 +39,7 @@ export default function WalletsScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const theme = isDark ? Colors.dark : Colors.light;
+  const { currency } = useSettings();
 
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -65,20 +67,24 @@ export default function WalletsScreen() {
 
   const handleDeleteWallet = (wallet: Wallet) => {
     Alert.alert(
-      'Delete Wallet',
-      `Deleting "${wallet.name}" will also permanently remove all associated transactions. Are you sure?`,
+      '🤖 Smart Vault Assistant',
+      `Attention: You are about to remove "${wallet.name}" with a current balance of ${formatCurrency(wallet.current_balance)}.\n\nAll linked transactions associated with this account will also be permanently cleared from your ledger.\n\nAre you sure you want to proceed?`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'Keep Account', style: 'cancel' },
         {
-          text: 'Delete',
+          text: 'Confirm Delete',
           style: 'destructive',
           onPress: async () => {
             try {
               await deleteWallet(db, wallet.id);
               await loadWallets();
+              Alert.alert(
+                '✨ Account Removed',
+                `"${wallet.name}" and all associated transaction logs were cleanly removed from your vault.`
+              );
             } catch (err) {
               console.error('Failed to delete wallet:', err);
-              Alert.alert('Error', 'Failed to delete wallet');
+              Alert.alert('Assistant Error', 'Failed to delete wallet. Please try again.');
             }
           },
         },
@@ -141,7 +147,7 @@ export default function WalletsScreen() {
 
     const parsed = parseFloat(addAmount);
     if (isNaN(parsed) || parsed <= 0) {
-      Alert.alert('Invalid Amount', 'Please enter a valid deposit amount greater than ₹0.');
+      Alert.alert('Invalid Amount', `Please enter a valid deposit amount greater than ${currency.symbol}0.`);
       return;
     }
 
@@ -321,7 +327,7 @@ export default function WalletsScreen() {
 
             {/* Currency Input Box */}
             <View style={[styles.currencyInputBox, { backgroundColor: isDark ? '#1C1F29' : '#F8FAFC' }]}>
-              <Text style={[styles.currencySymbol, { color: theme.text }]}>₹</Text>
+              <Text style={[styles.currencySymbol, { color: theme.text }]}>{currency.symbol}</Text>
               <TextInput
                 style={[styles.modalAmountInput, { color: theme.text }]}
                 placeholder="0.00"
@@ -343,7 +349,7 @@ export default function WalletsScreen() {
                     { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' },
                   ]}
                   onPress={() => handleQuickAdd(amt)}>
-                  <Text style={[styles.quickChipText, { color: theme.text }]}>+₹{amt}</Text>
+                  <Text style={[styles.quickChipText, { color: theme.text }]}>+{currency.symbol}{amt}</Text>
                 </Pressable>
               ))}
             </View>
@@ -409,7 +415,7 @@ export default function WalletsScreen() {
               <Text style={styles.confirmDepositText}>
                 {isAddingMoney
                   ? 'Adding Money...'
-                  : `Deposit ₹${addAmount || '0'} to ${addMoneyTarget?.name || 'Budget'}`}
+                  : `Deposit ${currency.symbol}${addAmount || '0'} to ${addMoneyTarget?.name || 'Budget'}`}
               </Text>
             </Pressable>
           </Pressable>

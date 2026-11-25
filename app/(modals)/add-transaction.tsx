@@ -1,4 +1,3 @@
-import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import {
@@ -6,16 +5,16 @@ import {
   CaretLeft,
   CaretRight,
   Check,
-  Image as ImageIcon,
+  Palette,
   Plus,
+  Sparkle,
   Tag,
-  Trash,
+  Wallet as WalletIcon,
   X,
 } from 'phosphor-react-native';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -42,8 +41,8 @@ import {
   getWallets,
   Wallet,
 } from '@/db/queries';
-import { saveReceiptLocally } from '@/utils/fileStorage';
 import { formatCurrency, formatDisplayDate, generateUUID } from '@/utils/formatters';
+import { useSettings } from '@/utils/settings';
 import { fontScale, moderateScale, Radius, Spacing } from '@/utils/styling';
 
 const MONTH_NAMES = [
@@ -51,12 +50,15 @@ const MONTH_NAMES = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
+const QUICK_AMOUNTS = [100, 200, 500, 1000, 2000, 5000];
+
 export default function AddTransactionModal() {
   const router = useRouter();
   const db = useSQLiteContext();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const theme = isDark ? Colors.dark : Colors.light;
+  const { currency } = useSettings();
 
   const [type, setType] = useState<'expense' | 'income'>('expense');
   const [amount, setAmount] = useState('');
@@ -74,17 +76,32 @@ export default function AddTransactionModal() {
   const [newCatType, setNewCatType] = useState<'expense' | 'income'>('expense');
   const [newCatIcon, setNewCatIcon] = useState('ForkKnife');
   const [newCatColor, setNewCatColor] = useState('#10B981');
+  const [customHex, setCustomHex] = useState('10B981');
   const [isSavingCategory, setIsSavingCategory] = useState(false);
 
-  // Date and receipt state
+  // Date state
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [pickerYear, setPickerYear] = useState<number>(new Date().getFullYear());
   const [pickerMonth, setPickerMonth] = useState<number>(new Date().getMonth());
-  const [receiptLocalUri, setReceiptLocalUri] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Load custom categories for the current type
+  const accentColor = type === 'expense' ? '#F43F5E' : '#10B981';
+
+  // Track colors already assigned to existing categories to prevent duplicates
+  const usedCategoryColors = useMemo(() => {
+    return new Set(categories.map((c) => c.color.toLowerCase()));
+  }, [categories]);
+
+  // Filter palette to omit already chosen colors, but keep the current category color
+  const availablePaletteColors = useMemo(() => {
+    const available = AVAILABLE_CATEGORY_COLORS.filter(
+      (color) => !usedCategoryColors.has(color.toLowerCase()) || color.toLowerCase() === newCatColor.toLowerCase()
+    );
+    return available.length > 0 ? available : AVAILABLE_CATEGORY_COLORS;
+  }, [usedCategoryColors, newCatColor]);
+
+  // Load custom categories for current type
   const loadCategories = useCallback(
     async (currentType: 'expense' | 'income') => {
       try {
@@ -149,8 +166,22 @@ export default function AddTransactionModal() {
     setNewCatName('');
     setNewCatType(type);
     setNewCatIcon(type === 'expense' ? 'ForkKnife' : 'Coins');
-    setNewCatColor(type === 'expense' ? '#F43F5E' : '#10B981');
+    // Pick an unused color from palette
+    const defaultCol = type === 'expense' ? '#F43F5E' : '#10B981';
+    const firstUnused = AVAILABLE_CATEGORY_COLORS.find(
+      (c) => !usedCategoryColors.has(c.toLowerCase())
+    ) || defaultCol;
+    setNewCatColor(firstUnused);
+    setCustomHex(firstUnused.replace('#', ''));
     setShowAddCategoryModal(true);
+  };
+
+  const handleCustomHexInput = (text: string) => {
+    const cleaned = text.replace(/[^0-9A-Fa-f]/g, '').slice(0, 6);
+    setCustomHex(cleaned);
+    if (cleaned.length === 6 || cleaned.length === 3) {
+      setNewCatColor(`#${cleaned}`);
+    }
   };
 
   const handleSaveCategory = async () => {
@@ -191,12 +222,12 @@ export default function AddTransactionModal() {
 
   const handlePromptDeleteCategory = (cat: Category) => {
     Alert.alert(
-      'Delete Category',
-      `Are you sure you want to remove the "${cat.name}" category?`,
+      '🤖 Smart Category Assistant',
+      `Are you sure you want to remove the "${cat.name}" category? Existing transactions will retain their historical logs.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Delete',
+          text: 'Delete Category',
           style: 'destructive',
           onPress: async () => {
             try {
@@ -212,28 +243,9 @@ export default function AddTransactionModal() {
     );
   };
 
-  const handlePickReceipt = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Permission Denied', 'Expico needs access to your photos to attach receipts.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets[0]?.uri) {
-      try {
-        const savedPath = await saveReceiptLocally(result.assets[0].uri);
-        setReceiptLocalUri(savedPath);
-      } catch (err) {
-        console.error('Failed to store receipt locally:', err);
-        Alert.alert('Error', 'Failed to store receipt image locally');
-      }
-    }
+  const handleQuickAdd = (increment: number) => {
+    const cur = parseFloat(amount) || 0;
+    setAmount((cur + increment).toString());
   };
 
   const handleDateSelect = (day: number) => {
@@ -260,12 +272,12 @@ export default function AddTransactionModal() {
   const handleSubmit = async () => {
     const parsedAmount = parseFloat(amount);
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
-      Alert.alert('Invalid Amount', 'Please enter a valid positive transaction amount.');
+      Alert.alert('Invalid Amount', `Please enter a valid amount greater than ${currency.symbol}0.`);
       return;
     }
 
     if (!selectedWalletId) {
-      Alert.alert('Missing Wallet', 'Please create or select a wallet first.');
+      Alert.alert('Missing Wallet', 'Please create or select an account wallet first.');
       return;
     }
 
@@ -287,13 +299,13 @@ export default function AddTransactionModal() {
         amount: parsedAmount,
         category: selectedCategory,
         description: description.trim() || null,
-        receipt_path: receiptLocalUri,
+        receipt_path: null,
         date: selectedDate.getTime(),
       });
       router.back();
     } catch (err) {
       console.error('Failed to save transaction:', err);
-      Alert.alert('Error', 'Failed to save transaction');
+      Alert.alert('Error', 'Failed to save transaction. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -313,31 +325,76 @@ export default function AddTransactionModal() {
       style={[styles.container, { backgroundColor: theme.surface }]}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled">
-      {/* 1. Type Switcher */}
-      <View style={[styles.toggleWrap, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}>
+      {/* Modal Top Header */}
+      <View style={styles.topHeaderBar}>
+        <View style={styles.headerLeft}>
+          <View style={[styles.headerIconGlow, { backgroundColor: `${accentColor}20` }]}>
+            <Sparkle size={moderateScale(18)} color={accentColor} weight="fill" />
+          </View>
+          <View>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>New Transaction</Text>
+            <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>
+              Record a verified ledger entry
+            </Text>
+          </View>
+        </View>
+
         <Pressable
-          style={[styles.toggleBtn, type === 'expense' && { backgroundColor: '#F43F5E' }]}
+          style={[styles.headerCloseBtn, { backgroundColor: isDark ? '#262A34' : '#F1F5F9' }]}
+          onPress={() => router.back()}
+          hitSlop={8}>
+          <X size={moderateScale(18)} color={theme.text} weight="bold" />
+        </Pressable>
+      </View>
+
+      {/* 1. Type Switcher with Smooth Visual Style */}
+      <View style={[styles.toggleWrap, { backgroundColor: isDark ? '#181B25' : '#E2E8F0', borderColor: theme.border }]}>
+        <Pressable
+          style={[
+            styles.toggleBtn,
+            type === 'expense' && [styles.toggleBtnActive, { backgroundColor: '#F43F5E' }],
+          ]}
           onPress={() => handleTypeChange('expense')}>
-          <Text style={[styles.toggleText, { color: type === 'expense' ? '#FFFFFF' : theme.textSecondary }]}>
+          <Text
+            style={[
+              styles.toggleText,
+              { color: type === 'expense' ? '#FFFFFF' : theme.textSecondary, fontWeight: type === 'expense' ? '800' : '600' },
+            ]}>
             Expense
           </Text>
         </Pressable>
 
         <Pressable
-          style={[styles.toggleBtn, type === 'income' && { backgroundColor: '#10B981' }]}
+          style={[
+            styles.toggleBtn,
+            type === 'income' && [styles.toggleBtnActive, { backgroundColor: '#10B981' }],
+          ]}
           onPress={() => handleTypeChange('income')}>
-          <Text style={[styles.toggleText, { color: type === 'income' ? '#003824' : theme.textSecondary }]}>
+          <Text
+            style={[
+              styles.toggleText,
+              { color: type === 'income' ? '#003824' : theme.textSecondary, fontWeight: type === 'income' ? '800' : '600' },
+            ]}>
             Income
           </Text>
         </Pressable>
       </View>
 
-      {/* 2. Amount Input */}
-      <View style={[styles.card, { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF', borderColor: theme.border }]}>
-        <Text style={[styles.label, { color: theme.textSecondary }]}>AMOUNT</Text>
+      {/* 2. Amount Input Hero Card */}
+      <View
+        style={[
+          styles.heroAmountCard,
+          {
+            backgroundColor: isDark ? '#1C1F29' : '#FFFFFF',
+            borderColor: `${accentColor}40`,
+          },
+        ]}>
+        <View style={styles.heroGlowAccent} />
+        <Text style={[styles.cardSublabel, { color: theme.textSecondary }]}>ENTER AMOUNT</Text>
+
         <View style={styles.amountInputRow}>
-          <Text style={[styles.currencyPrefix, { color: type === 'income' ? '#10B981' : '#F43F5E' }]}>
-            ₹
+          <Text style={[styles.currencyPrefix, { color: accentColor }]}>
+            {currency.symbol}
           </Text>
           <TextInput
             style={[styles.amountInput, { color: theme.text }]}
@@ -349,25 +406,48 @@ export default function AddTransactionModal() {
             autoFocus
           />
         </View>
+
+        {/* Quick Amount Chips */}
+        <View style={styles.quickChipsWrap}>
+          {QUICK_AMOUNTS.map((val) => (
+            <Pressable
+              key={val}
+              style={[
+                styles.quickChipBtn,
+                { backgroundColor: isDark ? '#262A34' : '#F1F5F9', borderColor: theme.border },
+              ]}
+              onPress={() => handleQuickAdd(val)}>
+              <Text style={[styles.quickChipText, { color: theme.text }]}>
+                +{currency.symbol}{val}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
       </View>
 
       {/* 3. Wallet Selector */}
-      <View style={[styles.card, { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF', borderColor: theme.border }]}>
+      <View style={[styles.sectionCard, { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF', borderColor: theme.border }]}>
         <View style={styles.sectionTitleRow}>
-          <Text style={[styles.label, { color: theme.textSecondary }]}>SELECT WALLET</Text>
+          <View style={styles.labelWithIcon}>
+            <WalletIcon size={moderateScale(15)} color={accentColor} weight="bold" />
+            <Text style={[styles.sectionTitleLabel, { color: theme.textSecondary }]}>SELECT ACCOUNT</Text>
+          </View>
           {wallets.length === 0 ? (
             <Pressable onPress={() => router.push('/(modals)/add-wallet')}>
-              <Text style={[styles.createWalletLink, { color: theme.primary }]}>+ Add Wallet</Text>
+              <Text style={[styles.createLinkText, { color: theme.primary }]}>+ Add Account</Text>
             </Pressable>
           ) : null}
         </View>
 
         {wallets.length === 0 ? (
           <Text style={[styles.noWalletText, { color: '#F43F5E' }]}>
-            No wallets found. Please create a wallet before recording transactions.
+            No accounts found. Please add an account before recording.
           </Text>
         ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipScrollContent}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipScrollContent}>
             {wallets.map((w) => {
               const selected = w.id === selectedWalletId;
               return (
@@ -376,16 +456,21 @@ export default function AddTransactionModal() {
                   style={[
                     styles.walletChip,
                     {
-                      backgroundColor: selected ? (isDark ? '#262A34' : '#E2E8F0') : (isDark ? '#181B25' : '#F8FAFC'),
-                      borderColor: selected ? theme.primary : theme.border,
-                      borderWidth: selected ? 1.5 : 1,
+                      backgroundColor: selected
+                        ? isDark ? '#262A34' : '#E2E8F0'
+                        : isDark ? '#181B25' : '#F8FAFC',
+                      borderColor: selected ? accentColor : theme.border,
+                      borderWidth: selected ? 2 : 1,
                     },
                   ]}
                   onPress={() => setSelectedWalletId(w.id)}>
-                  <Text style={[styles.walletChipText, { color: theme.text }]}>
-                    {w.name}
-                  </Text>
-                  <Text style={[styles.walletChipSub, { color: selected ? theme.primary : theme.textMuted }]}>
+                  <View style={styles.walletChipHeader}>
+                    <CategoryIcon name={w.icon} size={moderateScale(16)} color={selected ? accentColor : theme.textSecondary} />
+                    <Text style={[styles.walletChipName, { color: theme.text, fontWeight: selected ? '700' : '500' }]}>
+                      {w.name}
+                    </Text>
+                  </View>
+                  <Text style={[styles.walletChipBalance, { color: selected ? accentColor : theme.textMuted }]}>
                     {formatCurrency(w.current_balance)}
                   </Text>
                 </Pressable>
@@ -396,14 +481,17 @@ export default function AddTransactionModal() {
       </View>
 
       {/* 4. Category Grid (User Custom Categories) */}
-      <View style={[styles.card, { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF', borderColor: theme.border }]}>
+      <View style={[styles.sectionCard, { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF', borderColor: theme.border }]}>
         <View style={styles.sectionTitleRow}>
-          <Text style={[styles.label, { color: theme.textSecondary }]}>
-            CATEGORY ({type.toUpperCase()})
-          </Text>
+          <View style={styles.labelWithIcon}>
+            <Tag size={moderateScale(15)} color={accentColor} weight="bold" />
+            <Text style={[styles.sectionTitleLabel, { color: theme.textSecondary }]}>
+              CATEGORY ({type.toUpperCase()})
+            </Text>
+          </View>
           <Pressable style={styles.addCategoryHeaderBtn} onPress={handleOpenAddCategory}>
-            <Plus size={moderateScale(14)} color={theme.primary} weight="bold" />
-            <Text style={[styles.createWalletLink, { color: theme.primary }]}>Add Category</Text>
+            <Plus size={moderateScale(14)} color={accentColor} weight="bold" />
+            <Text style={[styles.createLinkText, { color: accentColor }]}>Add Category</Text>
           </Pressable>
         </View>
 
@@ -420,12 +508,12 @@ export default function AddTransactionModal() {
               No {type} categories yet
             </Text>
             <Text style={[styles.emptyCatSub, { color: theme.textMuted }]}>
-              Add custom {type} categories to classify and organize your transactions.
+              Create custom categories to organize your {type} transactions.
             </Text>
             <Pressable
               style={[
                 styles.addCatPrimaryBtn,
-                { backgroundColor: type === 'expense' ? '#F43F5E' : '#10B981' },
+                { backgroundColor: accentColor },
               ]}
               onPress={handleOpenAddCategory}>
               <Plus
@@ -452,22 +540,24 @@ export default function AddTransactionModal() {
                   style={[
                     styles.catItem,
                     {
-                      borderColor: selected ? (type === 'income' ? '#10B981' : theme.primary) : theme.border,
-                      borderWidth: selected ? 1.5 : 1,
-                      backgroundColor: selected ? (isDark ? '#262A34' : '#EDE9FE') : (isDark ? '#181B25' : '#F8FAFC'),
+                      borderColor: selected ? cat.color : theme.border,
+                      borderWidth: selected ? 2 : 1,
+                      backgroundColor: selected
+                        ? `${cat.color}20`
+                        : isDark ? '#181B25' : '#F8FAFC',
                     },
                   ]}
                   onPress={() => setSelectedCategory(cat.id)}
                   onLongPress={() => handlePromptDeleteCategory(cat)}>
-                  <View style={[styles.catIconCircle, { backgroundColor: cat.color + '22' }]}>
-                    <CategoryIcon name={cat.icon} color={cat.color} size={moderateScale(16)} />
+                  <View style={[styles.catIconCircle, { backgroundColor: `${cat.color}25` }]}>
+                    <CategoryIcon name={cat.icon} color={cat.color} size={moderateScale(18)} />
                   </View>
                   <Text
                     style={[
                       styles.catName,
                       {
-                        color: selected ? (type === 'income' ? '#10B981' : theme.primary) : theme.text,
-                        fontWeight: selected ? '700' : '600',
+                        color: selected ? cat.color : theme.text,
+                        fontWeight: selected ? '800' : '600',
                       },
                     ]}
                     numberOfLines={1}>
@@ -490,27 +580,35 @@ export default function AddTransactionModal() {
               ]}
               onPress={handleOpenAddCategory}>
               <View style={[styles.catIconCircle, { backgroundColor: isDark ? '#262A34' : '#E2E8F0' }]}>
-                <Plus size={moderateScale(14)} color={theme.primary} weight="bold" />
+                <Plus size={moderateScale(14)} color={accentColor} weight="bold" />
               </View>
-              <Text style={[styles.catName, { color: theme.primary, fontWeight: '700' }]}>+ Add</Text>
+              <Text style={[styles.catName, { color: accentColor, fontWeight: '700' }]}>+ Add</Text>
             </Pressable>
           </View>
         )}
       </View>
 
-      {/* 5. Date Picker */}
-      <View style={[styles.card, { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF', borderColor: theme.border }]}>
-        <Text style={[styles.label, { color: theme.textSecondary }]}>TRANSACTION DATE</Text>
+      {/* 5. Date Selector */}
+      <View style={[styles.sectionCard, { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF', borderColor: theme.border }]}>
+        <View style={styles.labelWithIcon}>
+          <CalendarBlank size={moderateScale(15)} color={accentColor} weight="bold" />
+          <Text style={[styles.sectionTitleLabel, { color: theme.textSecondary }]}>TRANSACTION DATE</Text>
+        </View>
+
         <View style={styles.dateRow}>
           <Pressable
             style={[
               styles.dateQuickBtn,
               isToday(selectedDate)
-                ? { backgroundColor: '#10B981', borderColor: '#10B981' }
+                ? { backgroundColor: accentColor, borderColor: accentColor }
                 : { backgroundColor: isDark ? '#181B25' : '#F1F5F9', borderColor: theme.border },
             ]}
             onPress={() => setSelectedDate(new Date())}>
-            <Text style={[styles.dateQuickText, { color: isToday(selectedDate) ? '#003824' : theme.text }]}>
+            <Text
+              style={[
+                styles.dateQuickText,
+                { color: isToday(selectedDate) ? (type === 'expense' ? '#FFFFFF' : '#003824') : theme.text },
+              ]}>
               Today
             </Text>
           </Pressable>
@@ -525,7 +623,7 @@ export default function AddTransactionModal() {
               setPickerMonth(selectedDate.getMonth());
               setShowDatePicker(true);
             }}>
-            <CalendarBlank size={moderateScale(18)} color="#10B981" weight="bold" />
+            <CalendarBlank size={moderateScale(18)} color={accentColor} weight="bold" />
             <Text style={[styles.dateChangeText, { color: theme.text }]}>
               {formatDisplayDate(selectedDate)}
             </Text>
@@ -534,10 +632,17 @@ export default function AddTransactionModal() {
       </View>
 
       {/* 6. Note / Description */}
-      <View style={[styles.card, { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF', borderColor: theme.border }]}>
-        <Text style={[styles.label, { color: theme.textSecondary }]}>NOTE / DESCRIPTION</Text>
+      <View style={[styles.sectionCard, { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF', borderColor: theme.border }]}>
+        <Text style={[styles.sectionTitleLabel, { color: theme.textSecondary }]}>NOTE / DESCRIPTION (OPTIONAL)</Text>
         <TextInput
-          style={[styles.noteInput, { color: theme.text }]}
+          style={[
+            styles.noteInput,
+            {
+              color: theme.text,
+              backgroundColor: isDark ? '#181B25' : '#F8FAFC',
+              borderColor: theme.border,
+            },
+          ]}
           placeholder="e.g. Grocery run, team lunch, freelance payout"
           placeholderTextColor={theme.textMuted}
           value={description}
@@ -545,38 +650,26 @@ export default function AddTransactionModal() {
         />
       </View>
 
-      {/* 7. Receipt Attachment */}
-      <View style={[styles.card, { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF', borderColor: theme.border }]}>
-        <Text style={[styles.label, { color: theme.textSecondary }]}>RECEIPT ATTACHMENT</Text>
-        {receiptLocalUri ? (
-          <View style={styles.receiptPreviewWrap}>
-            <Image source={{ uri: receiptLocalUri }} style={styles.receiptThumbnail} />
-            <Pressable
-              style={[styles.removeReceiptBtn, { backgroundColor: '#F43F5E' }]}
-              onPress={() => setReceiptLocalUri(null)}>
-              <Trash size={moderateScale(16)} color="#FFFFFF" weight="bold" />
-            </Pressable>
-          </View>
-        ) : (
-          <Pressable
-            style={[styles.pickReceiptBtn, { backgroundColor: isDark ? '#181B25' : '#F8FAFC', borderColor: theme.border }]}
-            onPress={handlePickReceipt}>
-            <ImageIcon size={moderateScale(20)} color="#10B981" weight="bold" />
-            <Text style={[styles.pickReceiptText, { color: theme.text }]}>Attach Receipt Image</Text>
-          </Pressable>
-        )}
-      </View>
-
-      {/* Submit Action */}
+      {/* Submit Action Button */}
       <Pressable
-        style={[styles.submitButton, { backgroundColor: '#10B981' }, isSubmitting && { opacity: 0.6 }]}
+        style={[
+          styles.submitButton,
+          { backgroundColor: accentColor },
+          isSubmitting && { opacity: 0.6 },
+        ]}
         disabled={isSubmitting}
         onPress={handleSubmit}>
-        <Check size={moderateScale(20)} color="#003824" weight="bold" />
-        <Text style={styles.submitText}>Save Transaction</Text>
+        <Check size={moderateScale(20)} color={type === 'expense' ? '#FFFFFF' : '#003824'} weight="bold" />
+        <Text
+          style={[
+            styles.submitText,
+            { color: type === 'expense' ? '#FFFFFF' : '#003824' },
+          ]}>
+          {isSubmitting ? 'Recording Entry...' : 'Save Transaction'}
+        </Text>
       </Pressable>
 
-      {/* ADD CATEGORY MODAL */}
+      {/* ADD CATEGORY MODAL WITH COLOR DEDUPLICATION & CUSTOM COLOR CHOOSER */}
       <Modal
         visible={showAddCategoryModal}
         transparent
@@ -592,9 +685,9 @@ export default function AddTransactionModal() {
             {/* Modal Header */}
             <View style={styles.addCatHeader}>
               <View>
-                <Text style={[styles.addCatTitle, { color: theme.text }]}>Add New Category</Text>
+                <Text style={[styles.addCatTitle, { color: theme.text }]}>Add Category</Text>
                 <Text style={[styles.addCatSubtitle, { color: theme.textSecondary }]}>
-                  Create your custom category
+                  Customize with an icon & unique color
                 </Text>
               </View>
               <Pressable
@@ -614,7 +707,7 @@ export default function AddTransactionModal() {
                     styles.modalToggleText,
                     { color: newCatType === 'expense' ? '#FFFFFF' : theme.textSecondary },
                   ]}>
-                  Expense Category
+                  Expense
                 </Text>
               </Pressable>
               <Pressable
@@ -625,7 +718,7 @@ export default function AddTransactionModal() {
                     styles.modalToggleText,
                     { color: newCatType === 'income' ? '#003824' : theme.textSecondary },
                   ]}>
-                  Income Category
+                  Income
                 </Text>
               </Pressable>
             </View>
@@ -666,10 +759,8 @@ export default function AddTransactionModal() {
                         styles.iconOptionBtn,
                         {
                           backgroundColor: isSelected
-                            ? newCatColor + '25'
-                            : isDark
-                            ? '#181B25'
-                            : '#F8FAFC',
+                            ? `${newCatColor}25`
+                            : isDark ? '#181B25' : '#F8FAFC',
                           borderColor: isSelected ? newCatColor : theme.border,
                           borderWidth: isSelected ? 2 : 1,
                         },
@@ -693,15 +784,23 @@ export default function AddTransactionModal() {
               </ScrollView>
             </View>
 
-            {/* Color Picker */}
+            {/* Color Palette (Filtered to remove colors already chosen) */}
             <View style={styles.fieldWrap}>
-              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>SELECT COLOR</Text>
+              <View style={styles.colorHeaderRow}>
+                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>
+                  AVAILABLE PALETTE (DEDUPLICATED)
+                </Text>
+                <Text style={[styles.colorCountBadge, { color: theme.textMuted }]}>
+                  {availablePaletteColors.length} unique colors
+                </Text>
+              </View>
+
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.colorScrollRow}>
-                {AVAILABLE_CATEGORY_COLORS.map((hex) => {
-                  const isSelected = newCatColor === hex;
+                {availablePaletteColors.map((hex) => {
+                  const isSelected = newCatColor.toLowerCase() === hex.toLowerCase();
                   return (
                     <Pressable
                       key={hex}
@@ -710,7 +809,10 @@ export default function AddTransactionModal() {
                         { backgroundColor: hex },
                         isSelected && styles.colorCircleSelected,
                       ]}
-                      onPress={() => setNewCatColor(hex)}>
+                      onPress={() => {
+                        setNewCatColor(hex);
+                        setCustomHex(hex.replace('#', ''));
+                      }}>
                       {isSelected ? (
                         <Check size={moderateScale(14)} color="#FFFFFF" weight="bold" />
                       ) : null}
@@ -720,21 +822,71 @@ export default function AddTransactionModal() {
               </ScrollView>
             </View>
 
+            {/* Custom Color Chooser */}
+            <View style={styles.fieldWrap}>
+              <View style={styles.colorHeaderRow}>
+                <View style={styles.customLabelWrap}>
+                  <Palette size={moderateScale(14)} color={newCatColor} weight="bold" />
+                  <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>
+                    CUSTOM COLOR CHOOSER
+                  </Text>
+                </View>
+                <View style={[styles.hexStatusPill, { backgroundColor: `${newCatColor}20` }]}>
+                  <Text style={[styles.hexStatusText, { color: newCatColor }]}>
+                    {newCatColor.toUpperCase()}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.customColorInputRow}>
+                <View style={[styles.customColorSwatch, { backgroundColor: newCatColor }]}>
+                  <Check size={moderateScale(14)} color="#FFFFFF" weight="bold" />
+                </View>
+
+                <View style={[styles.hexInputBox, { backgroundColor: isDark ? '#181B25' : '#F8FAFC', borderColor: theme.border }]}>
+                  <Text style={[styles.hexHash, { color: theme.textSecondary }]}>#</Text>
+                  <TextInput
+                    style={[styles.hexTextInput, { color: theme.text }]}
+                    placeholder="10B981"
+                    placeholderTextColor={theme.textMuted}
+                    value={customHex}
+                    onChangeText={handleCustomHexInput}
+                    maxLength={6}
+                    autoCapitalize="characters"
+                  />
+                </View>
+
+                {/* Quick Color Swatch Helpers */}
+                <View style={styles.customQuickRow}>
+                  {['#6366F1', '#EC4899', '#06B6D4', '#F59E0B'].map((qHex) => (
+                    <Pressable
+                      key={qHex}
+                      style={[styles.smallSwatch, { backgroundColor: qHex }]}
+                      onPress={() => {
+                        setNewCatColor(qHex);
+                        setCustomHex(qHex.replace('#', ''));
+                      }}
+                    />
+                  ))}
+                </View>
+              </View>
+            </View>
+
             {/* Preview Chip */}
             <View
               style={[
                 styles.previewWrap,
                 { backgroundColor: isDark ? '#181B25' : '#F8FAFC', borderColor: theme.border },
               ]}>
-              <Text style={[styles.previewLabel, { color: theme.textSecondary }]}>PREVIEW</Text>
+              <Text style={[styles.previewLabel, { color: theme.textSecondary }]}>LIVE PREVIEW</Text>
               <View style={styles.previewCardRow}>
-                <View style={[styles.catIconCircle, { backgroundColor: newCatColor + '25' }]}>
+                <View style={[styles.catIconCircle, { backgroundColor: `${newCatColor}25` }]}>
                   <CategoryIcon name={newCatIcon} color={newCatColor} size={moderateScale(18)} />
                 </View>
                 <Text style={[styles.previewName, { color: theme.text }]}>
                   {newCatName.trim() || 'Category Name'}
                 </Text>
-                <View style={[styles.previewBadge, { backgroundColor: newCatColor + '20' }]}>
+                <View style={[styles.previewBadge, { backgroundColor: `${newCatColor}20` }]}>
                   <Text style={[styles.previewBadgeText, { color: newCatColor }]}>
                     {newCatType.toUpperCase()}
                   </Text>
@@ -796,12 +948,15 @@ export default function AddTransactionModal() {
                 return (
                   <Pressable
                     key={d}
-                    style={[styles.calendarDayBtn, isSelected && { backgroundColor: '#10B981' }]}
+                    style={[styles.calendarDayBtn, isSelected && { backgroundColor: accentColor }]}
                     onPress={() => handleDateSelect(d)}>
                     <Text
                       style={[
                         styles.calendarDayText,
-                        { color: isSelected ? '#003824' : theme.text, fontWeight: isSelected ? '800' : '600' },
+                        {
+                          color: isSelected ? (type === 'expense' ? '#FFFFFF' : '#003824') : theme.text,
+                          fontWeight: isSelected ? '800' : '600',
+                        },
                       ]}>
                       {d}
                     </Text>
@@ -825,10 +980,45 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.xxxl,
     gap: Spacing.md,
   },
+  topHeaderBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Spacing.xs,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  headerIconGlow: {
+    width: moderateScale(36),
+    height: moderateScale(36),
+    borderRadius: Radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalTitle: {
+    fontSize: fontScale(18),
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  modalSubtitle: {
+    fontSize: fontScale(11),
+    fontWeight: '500',
+  },
+  headerCloseBtn: {
+    width: moderateScale(32),
+    height: moderateScale(32),
+    borderRadius: Radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   toggleWrap: {
     flexDirection: 'row',
     borderRadius: Radius.full,
     padding: moderateScale(4),
+    borderWidth: 1,
   },
   toggleBtn: {
     flex: 1,
@@ -836,16 +1026,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: Radius.full,
   },
+  toggleBtnActive: {
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+  },
   toggleText: {
     fontSize: fontScale(13),
-    fontWeight: '700',
   },
-  card: {
-    borderRadius: Radius.xl,
-    padding: Spacing.md,
-    borderWidth: 1,
+  heroAmountCard: {
+    borderRadius: Radius.xxl,
+    padding: Spacing.lg,
+    borderWidth: 1.5,
+    position: 'relative',
+    overflow: 'hidden',
   },
-  label: {
+  heroGlowAccent: {
+    position: 'absolute',
+    top: -40,
+    right: -40,
+    width: moderateScale(100),
+    height: moderateScale(100),
+    borderRadius: Radius.full,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+  },
+  cardSublabel: {
     fontSize: fontScale(10),
     fontWeight: '700',
     letterSpacing: 0.8,
@@ -854,115 +1061,152 @@ const styles = StyleSheet.create({
   amountInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: Spacing.xs,
+    marginVertical: Spacing.xs,
   },
   currencyPrefix: {
-    fontSize: fontScale(30),
-    fontWeight: '800',
-    marginRight: Spacing.xs,
-  },
-  amountInput: {
     fontSize: fontScale(32),
     fontWeight: '800',
+  },
+  amountInput: {
     flex: 1,
+    fontSize: fontScale(36),
+    fontWeight: '800',
+    padding: 0,
+  },
+  quickChipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+    marginTop: Spacing.sm,
+  },
+  quickChipBtn: {
+    paddingHorizontal: moderateScale(10),
+    paddingVertical: moderateScale(5),
+    borderRadius: Radius.full,
+    borderWidth: 1,
+  },
+  quickChipText: {
+    fontSize: fontScale(11),
+    fontWeight: '700',
+  },
+  sectionCard: {
+    borderRadius: Radius.xl,
+    padding: Spacing.md,
+    borderWidth: 1,
+    gap: Spacing.sm,
   },
   sectionTitleRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Spacing.xs,
+    justifyContent: 'space-between',
+  },
+  labelWithIcon: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  sectionTitleLabel: {
+    fontSize: fontScale(10),
+    fontWeight: '700',
+    letterSpacing: 0.8,
+  },
+  createLinkText: {
+    fontSize: fontScale(12),
+    fontWeight: '700',
   },
   addCategoryHeaderBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: moderateScale(4),
   },
-  createWalletLink: {
-    fontSize: fontScale(12),
-    fontWeight: '700',
-  },
   noWalletText: {
     fontSize: fontScale(12),
-    marginTop: Spacing.xs,
+    fontWeight: '600',
+    paddingVertical: Spacing.xs,
   },
   chipScrollContent: {
     gap: Spacing.sm,
-    paddingVertical: moderateScale(2),
+    paddingVertical: Spacing.xs,
   },
   walletChip: {
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     borderRadius: Radius.lg,
-    minWidth: moderateScale(100),
+    minWidth: moderateScale(130),
+    gap: moderateScale(4),
   },
-  walletChipText: {
+  walletChipHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  walletChipName: {
     fontSize: fontScale(13),
-    fontWeight: '700',
   },
-  walletChipSub: {
+  walletChipBalance: {
     fontSize: fontScale(11),
-    marginTop: moderateScale(2),
+    fontWeight: '700',
   },
   categoryGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: Spacing.xs,
+    gap: Spacing.sm,
   },
   catItem: {
-    width: '31.5%',
-    flexDirection: 'row',
+    width: '31%',
+    aspectRatio: 1.15,
+    borderRadius: Radius.lg,
     alignItems: 'center',
-    gap: Spacing.xs,
+    justifyContent: 'center',
     padding: Spacing.xs,
-    borderRadius: Radius.md,
+    gap: moderateScale(6),
   },
   addCatTile: {
     borderWidth: 1.5,
-    justifyContent: 'center',
   },
   catIconCircle: {
-    width: moderateScale(28),
-    height: moderateScale(28),
+    width: moderateScale(34),
+    height: moderateScale(34),
     borderRadius: Radius.full,
     alignItems: 'center',
     justifyContent: 'center',
   },
   catName: {
     fontSize: fontScale(11),
-    flex: 1,
+    textAlign: 'center',
   },
   emptyCategoryCard: {
+    padding: Spacing.lg,
     borderRadius: Radius.lg,
     borderWidth: 1,
-    padding: Spacing.lg,
     alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: Spacing.xs,
+    gap: Spacing.xs,
   },
   emptyCatIconCircle: {
-    width: moderateScale(48),
-    height: moderateScale(48),
+    width: moderateScale(44),
+    height: moderateScale(44),
     borderRadius: Radius.full,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.xs,
   },
   emptyCatTitle: {
     fontSize: fontScale(14),
     fontWeight: '700',
-    marginBottom: moderateScale(2),
   },
   emptyCatSub: {
     fontSize: fontScale(11),
     textAlign: 'center',
-    marginBottom: Spacing.md,
-    paddingHorizontal: Spacing.sm,
+    lineHeight: 16,
+    marginBottom: Spacing.sm,
   },
   addCatPrimaryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: moderateScale(6),
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.md,
     paddingVertical: moderateScale(8),
-    paddingHorizontal: Spacing.lg,
     borderRadius: Radius.full,
   },
   addCatPrimaryBtnText: {
@@ -974,67 +1218,37 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   dateQuickBtn: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: moderateScale(8),
+    flex: 1,
+    paddingVertical: moderateScale(10),
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: Radius.lg,
     borderWidth: 1,
   },
   dateQuickText: {
-    fontSize: fontScale(12),
+    fontSize: fontScale(13),
     fontWeight: '700',
   },
   dateChangeBtn: {
-    flex: 1,
+    flex: 2,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: Spacing.xs,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: moderateScale(8),
+    paddingVertical: moderateScale(10),
     borderRadius: Radius.lg,
     borderWidth: 1,
   },
   dateChangeText: {
-    fontSize: fontScale(12),
-    fontWeight: '600',
+    fontSize: fontScale(13),
+    fontWeight: '700',
   },
   noteInput: {
-    fontSize: fontScale(13),
-    paddingVertical: Spacing.xs,
-  },
-  receiptPreviewWrap: {
-    position: 'relative',
-    width: moderateScale(100),
-    height: moderateScale(100),
-    borderRadius: Radius.md,
-    overflow: 'hidden',
-  },
-  receiptThumbnail: {
-    width: '100%',
-    height: '100%',
-  },
-  removeReceiptBtn: {
-    position: 'absolute',
-    top: Spacing.xs,
-    right: Spacing.xs,
-    width: moderateScale(24),
-    height: moderateScale(24),
-    borderRadius: Radius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pickReceiptBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.xs,
-    padding: Spacing.md,
     borderRadius: Radius.lg,
     borderWidth: 1,
-    borderStyle: 'dashed',
-  },
-  pickReceiptText: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: moderateScale(10),
     fontSize: fontScale(13),
-    fontWeight: '600',
   },
   submitButton: {
     flexDirection: 'row',
@@ -1046,74 +1260,37 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
   },
   submitText: {
-    color: '#003824',
-    fontSize: fontScale(16),
+    fontSize: fontScale(15),
     fontWeight: '800',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: Spacing.lg,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'flex-end',
   },
-  calendarModalContent: {
-    width: '100%',
-    borderRadius: Radius.xl,
-    padding: Spacing.lg,
-    borderWidth: 1,
-  },
-  calendarHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.md,
-  },
-  calendarMonthText: {
-    fontSize: fontScale(16),
-    fontWeight: '700',
-  },
-  daysGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: moderateScale(6),
-  },
-  calendarDayBtn: {
-    width: `${100 / 7 - 2}%`,
-    height: moderateScale(36),
-    borderRadius: Radius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  calendarDayText: {
-    fontSize: fontScale(12),
-  },
-
-  /* Add Category Modal Styles */
   addCatModalContent: {
-    width: '100%',
-    borderRadius: Radius.xl,
-    padding: Spacing.lg,
+    borderTopLeftRadius: Radius.xxl,
+    borderTopRightRadius: Radius.xxl,
     borderWidth: 1,
-    gap: Spacing.sm,
+    padding: Spacing.lg,
     maxHeight: '90%',
+    gap: Spacing.md,
   },
   addCatHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
   addCatTitle: {
-    fontSize: fontScale(17),
+    fontSize: fontScale(16),
     fontWeight: '800',
   },
   addCatSubtitle: {
     fontSize: fontScale(11),
-    marginTop: moderateScale(2),
   },
   closeIconBtn: {
-    width: moderateScale(32),
-    height: moderateScale(32),
+    width: moderateScale(30),
+    height: moderateScale(30),
     borderRadius: Radius.full,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1122,11 +1299,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderRadius: Radius.full,
     padding: moderateScale(3),
-    marginTop: Spacing.xs,
   },
   modalToggleBtn: {
     flex: 1,
-    paddingVertical: moderateScale(7),
+    paddingVertical: moderateScale(6),
     alignItems: 'center',
     borderRadius: Radius.full,
   },
@@ -1135,7 +1311,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   fieldWrap: {
-    gap: moderateScale(4),
+    gap: moderateScale(6),
   },
   inputLabel: {
     fontSize: fontScale(10),
@@ -1143,22 +1319,22 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   catTextInput: {
-    borderWidth: 1,
     borderRadius: Radius.lg,
+    borderWidth: 1,
     paddingHorizontal: Spacing.md,
     paddingVertical: moderateScale(10),
-    fontSize: fontScale(14),
+    fontSize: fontScale(13),
   },
   iconScrollRow: {
-    gap: Spacing.xs,
-    paddingVertical: moderateScale(4),
+    gap: Spacing.sm,
+    paddingVertical: Spacing.xs,
   },
   iconOptionBtn: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.sm,
-    paddingVertical: moderateScale(8),
-    borderRadius: Radius.lg,
+    paddingVertical: Spacing.xs,
+    borderRadius: Radius.md,
     minWidth: moderateScale(56),
     gap: moderateScale(4),
   },
@@ -1166,35 +1342,94 @@ const styles = StyleSheet.create({
     fontSize: fontScale(9),
     fontWeight: '600',
   },
+  colorHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  colorCountBadge: {
+    fontSize: fontScale(10),
+    fontWeight: '600',
+  },
   colorScrollRow: {
-    gap: Spacing.xs,
-    paddingVertical: moderateScale(4),
+    gap: Spacing.sm,
+    paddingVertical: Spacing.xs,
   },
   colorCircle: {
-    width: moderateScale(34),
-    height: moderateScale(34),
+    width: moderateScale(32),
+    height: moderateScale(32),
     borderRadius: Radius.full,
     alignItems: 'center',
     justifyContent: 'center',
   },
   colorCircleSelected: {
-    borderWidth: 3,
+    borderWidth: 2.5,
     borderColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4,
-    shadowRadius: 3,
+  },
+  customLabelWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: moderateScale(4),
+  },
+  hexStatusPill: {
+    paddingHorizontal: moderateScale(8),
+    paddingVertical: moderateScale(2),
+    borderRadius: Radius.full,
+  },
+  hexStatusText: {
+    fontSize: fontScale(10),
+    fontWeight: '800',
+  },
+  customColorInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  customColorSwatch: {
+    width: moderateScale(36),
+    height: moderateScale(36),
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  hexInputBox: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    paddingHorizontal: Spacing.sm,
+  },
+  hexHash: {
+    fontSize: fontScale(14),
+    fontWeight: '700',
+    marginRight: moderateScale(4),
+  },
+  hexTextInput: {
+    flex: 1,
+    fontSize: fontScale(13),
+    fontWeight: '700',
+    paddingVertical: moderateScale(8),
+  },
+  customQuickRow: {
+    flexDirection: 'row',
+    gap: moderateScale(4),
+  },
+  smallSwatch: {
+    width: moderateScale(20),
+    height: moderateScale(20),
+    borderRadius: Radius.full,
   },
   previewWrap: {
-    borderWidth: 1,
-    borderRadius: Radius.lg,
     padding: Spacing.sm,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
     gap: moderateScale(4),
   },
   previewLabel: {
     fontSize: fontScale(9),
     fontWeight: '700',
-    letterSpacing: 0.8,
+    letterSpacing: 0.6,
   },
   previewCardRow: {
     flexDirection: 'row',
@@ -1202,30 +1437,60 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   previewName: {
+    flex: 1,
     fontSize: fontScale(13),
     fontWeight: '700',
-    flex: 1,
   },
   previewBadge: {
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: moderateScale(2),
+    paddingHorizontal: moderateScale(8),
+    paddingVertical: moderateScale(3),
     borderRadius: Radius.full,
   },
   previewBadgeText: {
-    fontSize: fontScale(9),
+    fontSize: fontScale(10),
     fontWeight: '800',
   },
   saveCategoryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: moderateScale(6),
+    gap: Spacing.xs,
     paddingVertical: moderateScale(12),
     borderRadius: Radius.xl,
-    marginTop: Spacing.xs,
   },
   saveCategoryBtnText: {
     fontSize: fontScale(14),
     fontWeight: '800',
+  },
+  calendarModalContent: {
+    margin: Spacing.xl,
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+    padding: Spacing.lg,
+  },
+  calendarHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.md,
+  },
+  calendarMonthText: {
+    fontSize: fontScale(15),
+    fontWeight: '800',
+  },
+  daysGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: moderateScale(6),
+  },
+  calendarDayBtn: {
+    width: '12.5%',
+    aspectRatio: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: Radius.md,
+  },
+  calendarDayText: {
+    fontSize: fontScale(12),
   },
 });

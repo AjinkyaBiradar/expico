@@ -459,7 +459,7 @@ export default function AnalyticsScreen() {
             <View style={[styles.emptyContainer, { backgroundColor: isDark ? '#181B25' : '#FFFFFF' }]}>
               <Text style={[styles.emptyTitle, { color: theme.text }]}>No Category Spending</Text>
               <Text style={[styles.emptySubtitle, { color: theme.textMuted }]}>
-                All category balances are currently ₹0.00. Log an expense to track your spending allocations.
+                All category balances are currently {formatCurrency(0)}. Log an expense to track your spending allocations.
               </Text>
             </View>
           ) : (

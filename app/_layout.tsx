@@ -2,12 +2,13 @@ import { NavigationBar } from 'expo-navigation-bar';
 import { Stack } from 'expo-router';
 import { SQLiteProvider } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
-import React, { Suspense } from 'react';
+import React, { Suspense, useEffect } from 'react';
 import { ActivityIndicator, Platform, Text, useColorScheme, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { Colors } from '@/constants/colors';
 import { migrateDbIfNeeded } from '@/db/schema';
+import { initSettingsAsync } from '@/utils/settings';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -41,6 +42,10 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const theme = isDark ? Colors.dark : Colors.light;
+
+  useEffect(() => {
+    initSettingsAsync();
+  }, []);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
