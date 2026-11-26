@@ -361,4 +361,177 @@ export async function clearAllTransactions(db: SQLiteDatabase): Promise<void> {
   });
 }
 
+export interface Reminder {
+  id: string;
+  title: string;
+  amount: number;
+  due_date: number;
+  category: string;
+  wallet_id?: string | null;
+  wallet_name?: string | null;
+  wallet_icon?: string | null;
+  frequency: 'one-time' | 'weekly' | 'monthly' | 'yearly';
+  is_paid: number;
+  paid_date?: number | null;
+  notes?: string | null;
+  created_at: number;
+}
+
+export async function getReminders(db: SQLiteDatabase): Promise<Reminder[]> {
+  return await db.getAllAsync<Reminder>(
+    `SELECT r.*, w.name as wallet_name, w.icon as wallet_icon
+     FROM reminders r
+     LEFT JOIN wallets w ON r.wallet_id = w.id
+     ORDER BY r.due_date ASC`
+  );
+}
+
+export async function createReminder(
+  db: SQLiteDatabase,
+  reminder: {
+    id: string;
+    title: string;
+    amount: number;
+    due_date: number;
+    category: string;
+    wallet_id?: string | null;
+    frequency?: 'one-time' | 'weekly' | 'monthly' | 'yearly';
+    notes?: string | null;
+  }
+): Promise<void> {
+  const createdAt = Date.now();
+  await db.runAsync(
+    `INSERT INTO reminders (id, title, amount, due_date, category, wallet_id, frequency, is_paid, paid_date, notes, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)`,
+    [
+      reminder.id,
+      reminder.title,
+      reminder.amount,
+      reminder.due_date,
+      reminder.category,
+      reminder.wallet_id ?? null,
+      reminder.frequency ?? 'one-time',
+      reminder.notes ?? null,
+      createdAt,
+    ]
+  );
+}
+
+export async function deleteReminder(db: SQLiteDatabase, id: string): Promise<void> {
+  await db.runAsync('DELETE FROM reminders WHERE id = ?', [id]);
+}
+
+export async function markReminderPaid(
+  db: SQLiteDatabase,
+  id: string,
+  recordExpense: boolean = false
+): Promise<void> {
+  const reminder = await db.getFirstAsync<Reminder>('SELECT * FROM reminders WHERE id = ?', [id]);
+  if (!reminder) return;
+
+  await db.withTransactionAsync(async () => {
+    const now = Date.now();
+
+    if (recordExpense && reminder.wallet_id && reminder.amount > 0) {
+      const txId = 'rem_tx_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+      await db.runAsync(
+        `INSERT INTO transactions (id, wallet_id, type, amount, category, description, receipt_path, date)
+         VALUES (?, ?, 'expense', ?, ?, ?, NULL, ?)`,
+        [
+          txId,
+          reminder.wallet_id,
+          reminder.amount,
+          reminder.category,
+          `Paid Reminder: ${reminder.title}`,
+          now,
+        ]
+      );
+      await db.runAsync('UPDATE wallets SET current_balance = current_balance - ? WHERE id = ?', [
+        reminder.amount,
+        reminder.wallet_id,
+      ]);
+    }
+
+    if (reminder.frequency && reminder.frequency !== 'one-time') {
+      const nextDue = new Date(reminder.due_date);
+      if (reminder.frequency === 'weekly') {
+        nextDue.setDate(nextDue.getDate() + 7);
+      } else if (reminder.frequency === 'monthly') {
+        nextDue.setMonth(nextDue.getMonth() + 1);
+      } else if (reminder.frequency === 'yearly') {
+        nextDue.setFullYear(nextDue.getFullYear() + 1);
+      }
+      await db.runAsync(
+        'UPDATE reminders SET due_date = ?, is_paid = 0, paid_date = ? WHERE id = ?',
+        [nextDue.getTime(), now, id]
+      );
+    } else {
+      await db.runAsync('UPDATE reminders SET is_paid = 1, paid_date = ? WHERE id = ?', [now, id]);
+    }
+  });
+}
+
+export async function markReminderUnpaid(db: SQLiteDatabase, id: string): Promise<void> {
+  await db.runAsync('UPDATE reminders SET is_paid = 0, paid_date = NULL WHERE id = ?', [id]);
+}
+
+export async function transferBetweenWallets(
+  db: SQLiteDatabase,
+  params: {
+    fromWalletId: string;
+    toWalletId: string;
+    amount: number;
+    note?: string;
+    date?: number;
+  }
+): Promise<void> {
+  const { fromWalletId, toWalletId, amount, note } = params;
+  const date = params.date || Date.now();
+
+  const fromWallet = await db.getFirstAsync<Wallet>('SELECT * FROM wallets WHERE id = ?', [fromWalletId]);
+  const toWallet = await db.getFirstAsync<Wallet>('SELECT * FROM wallets WHERE id = ?', [toWalletId]);
+
+  if (!fromWallet || !toWallet) {
+    throw new Error('Source or destination wallet not found');
+  }
+
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('UPDATE wallets SET current_balance = current_balance - ? WHERE id = ?', [
+      amount,
+      fromWalletId,
+    ]);
+
+    await db.runAsync('UPDATE wallets SET current_balance = current_balance + ? WHERE id = ?', [
+      amount,
+      toWalletId,
+    ]);
+
+    const outTxId = 'tx_out_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+    await db.runAsync(
+      `INSERT INTO transactions (id, wallet_id, type, amount, category, description, receipt_path, date)
+       VALUES (?, ?, 'expense', ?, 'Transfer Out', ?, NULL, ?)`,
+      [
+        outTxId,
+        fromWalletId,
+        amount,
+        note ? `${note} (Transfer to ${toWallet.name})` : `Transfer to ${toWallet.name}`,
+        date,
+      ]
+    );
+
+    const inTxId = 'tx_in_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+    await db.runAsync(
+      `INSERT INTO transactions (id, wallet_id, type, amount, category, description, receipt_path, date)
+       VALUES (?, ?, 'income', ?, 'Transfer In', ?, NULL, ?)`,
+      [
+        inTxId,
+        toWalletId,
+        amount,
+        note ? `${note} (Transfer from ${fromWallet.name})` : `Transfer from ${fromWallet.name}`,
+        date,
+      ]
+    );
+  });
+}
+
 

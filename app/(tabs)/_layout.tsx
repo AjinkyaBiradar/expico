@@ -1,5 +1,5 @@
 import { router, Tabs } from 'expo-router';
-import { ChartLineUp, Plus, SquaresFour, UserGear, Wallet } from 'phosphor-react-native';
+import { Bell, ChartLineUp, Plus, SquaresFour, UserGear } from 'phosphor-react-native';
 import React from 'react';
 import { Platform, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -54,7 +54,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="analytics"
         options={{
-          title: 'Analytics',
+          title: 'Insights',
           tabBarIcon: ({ focused }) => (
             <ChartLineUp
               size={moderateScale(24)}
@@ -95,11 +95,11 @@ export default function TabLayout() {
         })}
       />
       <Tabs.Screen
-        name="wallets"
+        name="reminders"
         options={{
-          title: 'Budgets',
+          title: 'Reminders',
           tabBarIcon: ({ focused }) => (
-            <Wallet
+            <Bell
               size={moderateScale(24)}
               color={focused ? theme.primary : theme.tabIconDefault}
               weight={focused ? 'fill' : 'regular'}

@@ -44,9 +44,26 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
         created_at INTEGER NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS reminders (
+        id TEXT PRIMARY KEY NOT NULL,
+        title TEXT NOT NULL,
+        amount REAL NOT NULL,
+        due_date INTEGER NOT NULL,
+        category TEXT NOT NULL,
+        wallet_id TEXT,
+        frequency TEXT NOT NULL DEFAULT 'one-time',
+        is_paid INTEGER NOT NULL DEFAULT 0,
+        paid_date INTEGER,
+        notes TEXT,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (wallet_id) REFERENCES wallets (id) ON DELETE SET NULL
+      );
+
       CREATE INDEX IF NOT EXISTS idx_tx_date ON transactions(date);
       CREATE INDEX IF NOT EXISTS idx_tx_wallet ON transactions(wallet_id);
       CREATE INDEX IF NOT EXISTS idx_cat_type ON categories(type);
+      CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(due_date);
+      CREATE INDEX IF NOT EXISTS idx_reminders_paid ON reminders(is_paid);
     `);
 
     // Safely remove any legacy demo/default transactions and demo wallets

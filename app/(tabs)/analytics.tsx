@@ -7,27 +7,33 @@ import {
   CaretLeft,
   CaretRight,
   CaretUp,
+  ChartDonut,
   Percent,
   PlusCircle,
   Trash,
   User,
+  Wallet as WalletIcon,
   Warning,
 } from 'phosphor-react-native';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   useColorScheme,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, G } from 'react-native-svg';
 
 import { CategoryIcon } from '@/components/CategoryIcon';
+import { WalletsView } from '@/components/WalletsView';
 import { getCategoryById, registerCategories } from '@/constants/categories';
 import { Colors } from '@/constants/colors';
 import {
@@ -40,6 +46,7 @@ import {
   TransactionWithWallet,
 } from '@/db/queries';
 import { formatCurrency } from '@/utils/formatters';
+import { InsightsSegment, useSettings } from '@/utils/settings';
 import { fontScale, moderateScale, Radius, Spacing } from '@/utils/styling';
 
 type HorizonPeriod = 'thisMonth' | 'lastMonth' | 'q3' | 'custom';
@@ -75,6 +82,40 @@ export default function AnalyticsScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const theme = isDark ? Colors.dark : Colors.light;
+
+  const { width: screenWidth } = useWindowDimensions();
+  const { lastInsightsSegment, setLastInsightsSegment } = useSettings();
+  const [activeSegment, setActiveSegment] = useState<InsightsSegment>(lastInsightsSegment || 'analysis');
+  const horizontalScrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
+
+  // Synchronize on initial mount if remembered segment is wallets
+  useEffect(() => {
+    if (lastInsightsSegment === 'wallets') {
+      const timer = setTimeout(() => {
+        horizontalScrollRef.current?.scrollTo({ x: screenWidth, animated: false });
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [lastInsightsSegment, screenWidth]);
+
+  const handleSelectSegment = (segment: InsightsSegment) => {
+    setActiveSegment(segment);
+    setLastInsightsSegment(segment);
+    horizontalScrollRef.current?.scrollTo({
+      x: segment === 'analysis' ? 0 : screenWidth,
+      animated: true,
+    });
+  };
+
+  const handleMomentumScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const offsetX = e.nativeEvent.contentOffset.x;
+    const pageIndex = Math.round(offsetX / (screenWidth || 1));
+    const targetSegment: InsightsSegment = pageIndex === 0 ? 'analysis' : 'wallets';
+    if (targetSegment !== activeSegment) {
+      setActiveSegment(targetSegment);
+      setLastInsightsSegment(targetSegment);
+    }
+  };
 
   const today = useMemo(() => new Date(), []);
   const [currentYear, setCurrentYear] = useState<number>(today.getFullYear());
@@ -294,24 +335,99 @@ export default function AnalyticsScreen() {
           </View>
           <View>
             <Text style={[styles.appBranding, { color: theme.textSecondary }]}>VAULTFLOW</Text>
-            <Text style={[styles.screenTitle, { color: theme.text }]}>Analytics & Allocations</Text>
+            <Text style={[styles.screenTitle, { color: theme.text }]}>Insights & Wallets</Text>
           </View>
         </View>
 
         <Pressable
           style={[styles.iconButton, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}
-          onPress={() => router.push('/(tabs)')}>
+          onPress={() => router.push('/(tabs)/reminders' as any)}>
           <Bell size={moderateScale(20)} color={theme.text} weight="bold" />
         </Pressable>
       </View>
 
+      {/* 2. STICKY TOP SEGMENTED CONTROL: Analysis | Wallets */}
+      <View
+        style={[
+          styles.stickySegmentContainer,
+          { backgroundColor: theme.surface, borderBottomColor: theme.border },
+        ]}>
+        <View
+          style={[
+            styles.mainSegmentWrap,
+            { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' },
+          ]}>
+          <Pressable
+            style={[
+              styles.mainSegmentBtn,
+              activeSegment === 'analysis' && [
+                styles.mainSegmentBtnActive,
+                { backgroundColor: isDark ? '#262A34' : '#FFFFFF' },
+              ],
+            ]}
+            onPress={() => handleSelectSegment('analysis')}>
+            <ChartDonut
+              size={moderateScale(16)}
+              color={activeSegment === 'analysis' ? '#10B981' : theme.textSecondary}
+              weight={activeSegment === 'analysis' ? 'bold' : 'regular'}
+            />
+            <Text
+              style={[
+                styles.mainSegmentBtnText,
+                {
+                  color: activeSegment === 'analysis' ? (isDark ? '#FFFFFF' : '#0F172A') : theme.textSecondary,
+                  fontWeight: activeSegment === 'analysis' ? '800' : '600',
+                },
+              ]}>
+              Analysis
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={[
+              styles.mainSegmentBtn,
+              activeSegment === 'wallets' && [
+                styles.mainSegmentBtnActive,
+                { backgroundColor: isDark ? '#262A34' : '#FFFFFF' },
+              ],
+            ]}
+            onPress={() => handleSelectSegment('wallets')}>
+            <WalletIcon
+              size={moderateScale(16)}
+              color={activeSegment === 'wallets' ? '#10B981' : theme.textSecondary}
+              weight={activeSegment === 'wallets' ? 'bold' : 'regular'}
+            />
+            <Text
+              style={[
+                styles.mainSegmentBtnText,
+                {
+                  color: activeSegment === 'wallets' ? (isDark ? '#FFFFFF' : '#0F172A') : theme.textSecondary,
+                  fontWeight: activeSegment === 'wallets' ? '800' : '600',
+                },
+              ]}>
+              Wallets
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+
+      {/* SWIPEABLE HORIZONTAL PAGER */}
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.primary} />
-        }>
-        {/* 2. PERIOD SELECTOR & CLEAN SEGMENTED CONTROL */}
+        ref={horizontalScrollRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={handleMomentumScrollEnd}
+        style={styles.horizontalPager}>
+        {/* PAGE 1: ANALYSIS */}
+        <View style={{ width: screenWidth, flex: 1 }}>
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.primary} />
+            }>
+            {/* 3. PERIOD SELECTOR & CLEAN SEGMENTED CONTROL */}
         <View style={[styles.periodNavContainer, { backgroundColor: isDark ? '#181B25' : '#FFFFFF', borderColor: theme.border }]}>
           <Pressable
             style={[styles.periodNavBtn, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}
@@ -816,6 +932,13 @@ export default function AnalyticsScreen() {
             })
           )}
         </View>
+          </ScrollView>
+        </View>
+
+        {/* PAGE 2: WALLETS */}
+        <View style={{ width: screenWidth, flex: 1 }}>
+          <WalletsView onAddWalletPress={() => router.push('/(modals)/add-wallet')} />
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -830,7 +953,40 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
+    paddingTop: Spacing.xs,
+    paddingBottom: Spacing.xs,
+  },
+  stickySegmentContainer: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: moderateScale(6),
+    borderBottomWidth: 1,
+  },
+  mainSegmentWrap: {
+    flexDirection: 'row',
+    borderRadius: Radius.full,
+    padding: moderateScale(4),
+  },
+  mainSegmentBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+    paddingVertical: moderateScale(8),
+    borderRadius: Radius.full,
+  },
+  mainSegmentBtnActive: {
+    elevation: 3,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+  },
+  mainSegmentBtnText: {
+    fontSize: fontScale(13),
+  },
+  horizontalPager: {
+    flex: 1,
   },
   headerLeft: {
     flexDirection: 'row',

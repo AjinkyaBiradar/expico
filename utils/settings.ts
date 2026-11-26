@@ -25,10 +25,12 @@ export const CURRENCIES: CurrencyConfig[] = [
 ];
 
 export type ThemePreference = 'system' | 'light' | 'dark';
+export type InsightsSegment = 'analysis' | 'wallets';
 
 interface AppSettings {
   currencyCode: string;
   themePreference: ThemePreference;
+  lastInsightsSegment?: InsightsSegment;
 }
 
 const SETTINGS_FILE = `${FileSystem.documentDirectory || ''}vaultflow_settings.json`;
@@ -36,6 +38,7 @@ const SETTINGS_FILE = `${FileSystem.documentDirectory || ''}vaultflow_settings.j
 let currentSettings: AppSettings = {
   currencyCode: 'INR',
   themePreference: 'dark',
+  lastInsightsSegment: 'analysis',
 };
 
 const listeners = new Set<() => void>();
@@ -63,6 +66,9 @@ export async function initSettingsAsync(): Promise<void> {
         } else {
           Appearance.setColorScheme('unspecified');
         }
+      }
+      if (parsed.lastInsightsSegment) {
+        currentSettings.lastInsightsSegment = parsed.lastInsightsSegment;
       }
       notifyListeners();
     }
@@ -109,6 +115,16 @@ export async function setThemePreferenceAsync(theme: ThemePreference): Promise<v
   notifyListeners();
 }
 
+export function getLastInsightsSegment(): InsightsSegment {
+  return currentSettings.lastInsightsSegment || 'analysis';
+}
+
+export async function setLastInsightsSegmentAsync(segment: InsightsSegment): Promise<void> {
+  currentSettings.lastInsightsSegment = segment;
+  await persistSettings();
+  notifyListeners();
+}
+
 /**
  * React hook to access and subscribe to settings.
  */
@@ -127,7 +143,9 @@ export function useSettings() {
     currency: getActiveCurrency(),
     currencies: CURRENCIES,
     themePreference: getThemePreference(),
+    lastInsightsSegment: getLastInsightsSegment(),
     setCurrency: setActiveCurrencyAsync,
     setThemePreference: setThemePreferenceAsync,
+    setLastInsightsSegment: setLastInsightsSegmentAsync,
   };
 }
