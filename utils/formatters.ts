@@ -4,57 +4,82 @@
 import { getActiveCurrency } from './settings';
 
 /**
- * Formats a numeric value into the active currency with two decimal places.
+ * Formats a numeric value into the active currency.
+ * Properly positions negative sign before currency symbol (e.g. -₹45).
+ * Omits trailing .00 for integer values (e.g. -₹45 instead of -₹45.00).
  * Supports privacy masking when isHidden is true.
  */
 export function formatCurrency(val: number | null | undefined, isHidden = false): string {
   const currency = getActiveCurrency();
-  if (isHidden) return `${currency.symbol}••••••••`;
   const num = typeof val === 'number' && !isNaN(val) ? val : 0;
-  return `${currency.symbol}${num.toLocaleString(currency.locale, {
-    minimumFractionDigits: 2,
+  const isNegative = num < 0;
+  const prefix = isNegative ? `-${currency.symbol}` : currency.symbol;
+
+  if (isHidden) return `${prefix}••••••••`;
+
+  const absNum = Math.abs(num);
+  const isInt = absNum % 1 === 0;
+
+  return `${prefix}${absNum.toLocaleString(currency.locale, {
+    minimumFractionDigits: isInt ? 0 : 2,
     maximumFractionDigits: 2,
   })}`;
 }
 
 /**
- * Compact stat currency formatter (e.g. ₹1,200.00 or $1,200.00).
+ * Compact stat currency formatter.
+ * Properly handles negative values (e.g. -₹45).
  */
 export function formatStatCurrency(val: number | null | undefined, isHidden = false): string {
   const currency = getActiveCurrency();
-  if (isHidden) return `${currency.symbol}••••`;
   const num = typeof val === 'number' && !isNaN(val) ? val : 0;
-  return `${currency.symbol}${num.toLocaleString(currency.locale, {
-    minimumFractionDigits: 2,
+  const isNegative = num < 0;
+  const prefix = isNegative ? `-${currency.symbol}` : currency.symbol;
+
+  if (isHidden) return `${prefix}••••`;
+
+  const absNum = Math.abs(num);
+  const isInt = absNum % 1 === 0;
+
+  return `${prefix}${absNum.toLocaleString(currency.locale, {
+    minimumFractionDigits: isInt ? 0 : 2,
     maximumFractionDigits: 2,
   })}`;
 }
 
 /**
- * Compact abbreviation for large numbers (e.g. 3200 -> ₹3.2k).
+ * Compact abbreviation for large numbers (e.g. 3200 -> ₹3.2k, -45 -> -₹45).
  */
 export function formatCompactCurrency(val: number | null | undefined): string {
   const currency = getActiveCurrency();
   const num = typeof val === 'number' && !isNaN(val) ? val : 0;
+  const isNegative = num < 0;
+  const prefix = isNegative ? `-${currency.symbol}` : currency.symbol;
+  const absNum = Math.abs(num);
+
   if (currency.code === 'INR') {
-    if (num >= 10000000) {
-      return `${currency.symbol}${(num / 10000000).toFixed(1)}Cr`;
+    if (absNum >= 10000000) {
+      return `${prefix}${(absNum / 10000000).toFixed(1)}Cr`;
     }
-    if (num >= 100000) {
-      return `${currency.symbol}${(num / 100000).toFixed(1)}L`;
+    if (absNum >= 100000) {
+      return `${prefix}${(absNum / 100000).toFixed(1)}L`;
     }
   } else {
-    if (num >= 1000000000) {
-      return `${currency.symbol}${(num / 1000000000).toFixed(1)}B`;
+    if (absNum >= 1000000000) {
+      return `${prefix}${(absNum / 1000000000).toFixed(1)}B`;
     }
-    if (num >= 1000000) {
-      return `${currency.symbol}${(num / 1000000).toFixed(1)}M`;
+    if (absNum >= 1000000) {
+      return `${prefix}${(absNum / 1000000).toFixed(1)}M`;
     }
   }
-  if (num >= 1000) {
-    return `${currency.symbol}${(num / 1000).toFixed(1)}k`;
+  if (absNum >= 1000) {
+    return `${prefix}${(absNum / 1000).toFixed(1)}k`;
   }
-  return `${currency.symbol}${num}`;
+  const isInt = absNum % 1 === 0;
+  return `${prefix}${absNum.toLocaleString(currency.locale, {
+    minimumFractionDigits: isInt ? 0 : 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 /**

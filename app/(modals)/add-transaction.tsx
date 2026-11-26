@@ -30,6 +30,7 @@ import {
   AVAILABLE_CATEGORY_COLORS,
   AVAILABLE_CATEGORY_ICONS,
   Category,
+  getDistinctFoodMeta,
   registerCategories,
 } from '@/constants/categories';
 import { Colors } from '@/constants/colors';
@@ -174,6 +175,16 @@ export default function AddTransactionModal() {
     setNewCatColor(firstUnused);
     setCustomHex(firstUnused.replace('#', ''));
     setShowAddCategoryModal(true);
+  };
+
+  const handleCatNameChange = (text: string) => {
+    setNewCatName(text);
+    const match = getDistinctFoodMeta(text);
+    if (match) {
+      setNewCatIcon(match.icon);
+      setNewCatColor(match.color);
+      setCustomHex(match.color.replace('#', ''));
+    }
   };
 
   const handleCustomHexInput = (text: string) => {
@@ -738,7 +749,7 @@ export default function AddTransactionModal() {
                 placeholder={newCatType === 'expense' ? 'e.g. Groceries, Gym, Coffee' : 'e.g. Salary, Side Gig, Dividend'}
                 placeholderTextColor={theme.textMuted}
                 value={newCatName}
-                onChangeText={setNewCatName}
+                onChangeText={handleCatNameChange}
                 autoFocus
               />
             </View>

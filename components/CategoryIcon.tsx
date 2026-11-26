@@ -1,28 +1,43 @@
 import {
   Airplane,
   Bank,
+  BeerBottle,
+  BowlFood,
+  Bread,
   Briefcase,
   CalendarBlank,
   Car,
+  Carrot,
+  Coffee,
   Coins,
+  Cookie,
+  CookingPot,
   CreditCard,
   DeviceMobile,
   DotsThreeOutline,
+  Drop,
+  Egg,
   FirstAid,
+  Fish,
   ForkKnife,
   GameController,
   Gift,
   GraduationCap,
+  Hamburger,
   House,
+  IceCream,
   Icon,
   Laptop,
+  Martini,
   Money,
   PiggyBank,
+  Pizza,
   Receipt,
   ShoppingCart,
   Taxi,
   TrendUp,
   Wallet,
+  Wine,
 } from 'phosphor-react-native';
 import React from 'react';
 
@@ -30,6 +45,21 @@ import { moderateScale } from '@/utils/styling';
 
 const ICON_MAP: Record<string, Icon> = {
   ForkKnife,
+  Coffee,
+  Pizza,
+  Hamburger,
+  Carrot,
+  CookingPot,
+  BowlFood,
+  BeerBottle,
+  Wine,
+  Martini,
+  Bread,
+  Cookie,
+  IceCream,
+  Egg,
+  Fish,
+  Drop,
   ShoppingCart,
   House,
   Car,
@@ -58,12 +88,12 @@ interface CategoryIconProps {
   name: string;
   color?: string;
   size?: number;
-  weight?: 'fill' | 'regular' | 'bold';
+  weight?: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone';
 }
 
 export function CategoryIcon({
   name,
-  color = '#4EDEA3',
+  color = '#6B7280',
   size = moderateScale(20),
   weight = 'fill',
 }: CategoryIconProps) {

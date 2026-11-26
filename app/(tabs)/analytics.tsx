@@ -6,10 +6,12 @@ import {
   CaretDown,
   CaretLeft,
   CaretRight,
+  CaretUp,
   Percent,
   PlusCircle,
   Trash,
   User,
+  Warning,
 } from 'phosphor-react-native';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
@@ -80,10 +82,12 @@ export default function AnalyticsScreen() {
   const [horizon, setHorizon] = useState<HorizonPeriod>('thisMonth');
 
   const [totalSpent, setTotalSpent] = useState<number>(0);
+  const [totalIncome, setTotalIncome] = useState<number>(0);
   const [categories, setCategories] = useState<CategorySummary[]>([]);
   const [transactions, setTransactions] = useState<TransactionWithWallet[]>([]);
   const [expandedCategoryId, setExpandedCategoryId] = useState<string | null>(null);
   const [selectedLegendCategory, setSelectedLegendCategory] = useState<string | null>(null);
+  const [isOtherExpanded, setIsOtherExpanded] = useState<boolean>(false);
   const [refreshing, setRefreshing] = useState<boolean>(false);
 
   // Month range
@@ -107,6 +111,7 @@ export default function AnalyticsScreen() {
 
       registerCategories(allDbCats);
       setTotalSpent(summary.totalExpense);
+      setTotalIncome(summary.totalIncome);
       setCategories(catList);
       setTransactions(txList);
     } catch (err) {
@@ -167,9 +172,37 @@ export default function AnalyticsScreen() {
     }
   };
 
+  const handleSelectHorizon = (selected: HorizonPeriod) => {
+    setHorizon(selected);
+    const now = new Date();
+    if (selected === 'thisMonth') {
+      setCurrentYear(now.getFullYear());
+      setCurrentMonth(now.getMonth());
+    } else if (selected === 'lastMonth') {
+      if (now.getMonth() === 0) {
+        setCurrentYear(now.getFullYear() - 1);
+        setCurrentMonth(11);
+      } else {
+        setCurrentYear(now.getFullYear());
+        setCurrentMonth(now.getMonth() - 1);
+      }
+    } else if (selected === 'q3') {
+      setCurrentYear(now.getFullYear());
+      setCurrentMonth(8); // September (Q3 end)
+    } else if (selected === 'custom') {
+      Alert.alert('Custom Period', 'Use the month navigation controls above to select any custom period.');
+    }
+  };
 
+  // Budget calculations: Target budget from income or standard period baseline of 600
+  const targetBudget = totalIncome > 0 ? totalIncome : 600;
+  const isOverBudget = targetBudget > 0 && totalSpent > targetBudget;
+  const overageAmount = Math.max(0, totalSpent - targetBudget);
+  const budgetRatio = targetBudget > 0 ? (totalSpent / targetBudget) * 100 : 0;
+  const displayBudgetPercentage = Math.round(budgetRatio);
+  const remainingBudget = Math.max(0, targetBudget - totalSpent);
 
-  // Dynamic Envelopes strictly derived from database categories
+  // Dynamic Envelopes strictly derived from database categories, sorted by spent descending
   const envelopes: CategoryEnvelope[] = useMemo(() => {
     if (categories.length === 0) {
       return [];
@@ -177,7 +210,7 @@ export default function AnalyticsScreen() {
 
     const totalExpense = categories.reduce((sum, c) => sum + c.total, 0);
 
-    return categories.map((catItem) => {
+    const list = categories.map((catItem) => {
       const catInfo = getCategoryById(catItem.category);
       const percentage = totalExpense > 0 ? Math.round((catItem.total / totalExpense) * 100) : 0;
       const count = transactions.filter((t) => t.category === catItem.category).length;
@@ -193,20 +226,52 @@ export default function AnalyticsScreen() {
         note: `${count} transaction${count === 1 ? '' : 's'} recorded`,
       };
     });
+
+    return list.sort((a, b) => b.spent - a.spent);
   }, [categories, transactions]);
 
   // Donut Arc calculation (Pure SVG)
+  // Reduced to Top 5 categories plus "Other" (tap to expand)
   const donutSize = moderateScale(190);
   const strokeWidth = moderateScale(22);
   const centerRadius = (donutSize - strokeWidth) / 2;
   const circumference = 2 * Math.PI * centerRadius;
 
+  const { donutCategories, otherCategories } = useMemo(() => {
+    if (envelopes.length <= 5) {
+      return { donutCategories: envelopes, otherCategories: [] };
+    }
+
+    const top5 = envelopes.slice(0, 5);
+    const others = envelopes.slice(5);
+    const totalExpense = envelopes.reduce((sum, e) => sum + e.spent, 0);
+    const otherSpent = others.reduce((sum, e) => sum + e.spent, 0);
+    const otherPct = totalExpense > 0 ? Math.round((otherSpent / totalExpense) * 100) : 0;
+    const otherTxCount = others.reduce((sum, e) => sum + e.txCount, 0);
+
+    const otherEnvelope: CategoryEnvelope = {
+      id: 'other_grouped',
+      name: 'Other',
+      spent: otherSpent,
+      percentage: otherPct,
+      color: '#86948A',
+      icon: 'DotsThreeOutline',
+      txCount: otherTxCount,
+      note: `${others.length} smaller categories`,
+    };
+
+    return {
+      donutCategories: [...top5, otherEnvelope],
+      otherCategories: others,
+    };
+  }, [envelopes]);
+
   const donutSlices = useMemo(() => {
-    const totalEnvelopesSpent = envelopes.reduce((acc, e) => acc + e.spent, 0);
-    if (totalEnvelopesSpent === 0) return [];
+    const totalDonutSpent = donutCategories.reduce((acc, e) => acc + e.spent, 0);
+    if (totalDonutSpent === 0) return [];
     let runningOffset = 0;
-    return envelopes.map((e) => {
-      const pct = Math.round((e.spent / totalEnvelopesSpent) * 100);
+    return donutCategories.map((e) => {
+      const pct = Math.round((e.spent / totalDonutSpent) * 100);
       const dashLength = (pct / 100) * circumference;
       const offset = runningOffset;
       runningOffset += dashLength;
@@ -217,7 +282,7 @@ export default function AnalyticsScreen() {
         offset,
       };
     });
-  }, [envelopes, circumference]);
+  }, [donutCategories, circumference]);
 
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: theme.surface }]} edges={['top', 'left', 'right']}>
@@ -246,7 +311,7 @@ export default function AnalyticsScreen() {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.primary} />
         }>
-        {/* 2. PERIOD SELECTOR & QUICK HORIZON CHIPS */}
+        {/* 2. PERIOD SELECTOR & CLEAN SEGMENTED CONTROL */}
         <View style={[styles.periodNavContainer, { backgroundColor: isDark ? '#181B25' : '#FFFFFF', borderColor: theme.border }]}>
           <Pressable
             style={[styles.periodNavBtn, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}
@@ -269,8 +334,12 @@ export default function AnalyticsScreen() {
           </Pressable>
         </View>
 
-        {/* Quick Horizon Pills */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizonScroll}>
+        {/* Clean Segmented Control replacing loose horizontal pills */}
+        <View
+          style={[
+            styles.segmentedControlWrap,
+            { backgroundColor: isDark ? '#181B25' : '#F1F5F9', borderColor: theme.border },
+          ]}>
           {[
             { id: 'thisMonth', label: 'This Month' },
             { id: 'lastMonth', label: 'Last Month' },
@@ -282,60 +351,165 @@ export default function AnalyticsScreen() {
               <Pressable
                 key={item.id}
                 style={[
-                  styles.horizonPill,
-                  active
-                    ? { backgroundColor: '#10B981' }
-                    : { backgroundColor: isDark ? '#262A34' : '#F1F5F9' },
+                  styles.segmentBtn,
+                  active && [
+                    styles.segmentBtnActive,
+                    { backgroundColor: isDark ? '#262A34' : '#FFFFFF' },
+                  ],
                 ]}
-                onPress={() => setHorizon(item.id as HorizonPeriod)}>
+                onPress={() => handleSelectHorizon(item.id as HorizonPeriod)}>
                 <Text
                   style={[
-                    styles.horizonPillText,
-                    { color: active ? '#003824' : theme.textSecondary, fontWeight: active ? '700' : '600' },
+                    styles.segmentBtnText,
+                    {
+                      color: active ? (isDark ? '#FFFFFF' : '#0F172A') : theme.textSecondary,
+                      fontWeight: active ? '800' : '600',
+                    },
                   ]}>
                   {item.label}
                 </Text>
               </Pressable>
             );
           })}
-        </ScrollView>
+        </View>
 
-        {/* 3. SPENDING OVERVIEW HIGHLIGHT BANNER */}
-        <View style={[styles.budgetHealthCard, { backgroundColor: isDark ? '#181B25' : '#FFFFFF', borderColor: theme.border }]}>
-          <View style={styles.healthBannerGlow} />
+        {/* 3. BUDGET HEALTH CARD WITH ACCURATE OVER-BUDGET WARNING STATE */}
+        <View
+          style={[
+            styles.budgetHealthCard,
+            {
+              backgroundColor: isDark ? '#181B25' : '#FFFFFF',
+              borderColor: isOverBudget ? 'rgba(244, 63, 94, 0.45)' : theme.border,
+            },
+          ]}>
+          <View
+            style={[
+              styles.healthBannerGlow,
+              { backgroundColor: isOverBudget ? 'rgba(244, 63, 94, 0.12)' : 'rgba(16, 185, 129, 0.1)' },
+            ]}
+          />
 
           <View style={styles.healthHeaderRow}>
             <View style={styles.healthTitleRow}>
-              <View style={[styles.pulseDot, { backgroundColor: '#10B981' }]} />
-              <Text style={styles.healthStatusLabel}>SPENDING OVERVIEW</Text>
+              <View
+                style={[
+                  styles.pulseDot,
+                  { backgroundColor: isOverBudget ? '#F43F5E' : '#10B981' },
+                ]}
+              />
+              <Text
+                style={[
+                  styles.healthStatusLabel,
+                  { color: isOverBudget ? '#F43F5E' : '#10B981' },
+                ]}>
+                BUDGET HEALTH
+              </Text>
             </View>
-            <View style={[styles.statusBadge, { backgroundColor: isDark ? '#31353F' : '#D1FAE5' }]}>
-              <Text style={[styles.statusBadgeText, { color: isDark ? '#4EDEA3' : '#059669' }]}>
-                {envelopes.length} {envelopes.length === 1 ? 'Category' : 'Categories'}
+
+            {/* Status Badge */}
+            <View
+              style={[
+                styles.statusBadge,
+                {
+                  backgroundColor: isOverBudget
+                    ? 'rgba(244, 63, 94, 0.18)'
+                    : budgetRatio >= 85
+                    ? 'rgba(245, 158, 11, 0.18)'
+                    : isDark
+                    ? '#31353F'
+                    : '#D1FAE5',
+                },
+              ]}>
+              {isOverBudget && (
+                <Warning size={moderateScale(12)} color="#F43F5E" weight="fill" style={{ marginRight: 3 }} />
+              )}
+              <Text
+                style={[
+                  styles.statusBadgeText,
+                  {
+                    color: isOverBudget
+                      ? '#F43F5E'
+                      : budgetRatio >= 85
+                      ? '#F59E0B'
+                      : isDark
+                      ? '#4EDEA3'
+                      : '#059669',
+                    fontWeight: '800',
+                  },
+                ]}>
+                {isOverBudget ? 'OVER BUDGET' : budgetRatio >= 85 ? 'NEAR LIMIT' : 'ON TRACK'}
               </Text>
             </View>
           </View>
 
-          {/* Amount Spent */}
+          {/* Spent vs Target Row */}
           <View style={styles.spentVsTargetRow}>
             <View>
               <Text style={[styles.spentSub, { color: theme.textSecondary }]}>Total Spent</Text>
               <View style={styles.spentValRow}>
-                <Text style={[styles.spentValText, { color: theme.text }]}>
+                <Text style={[styles.spentValText, { color: isOverBudget ? '#F43F5E' : theme.text }]}>
                   {formatCurrency(totalSpent)}
                 </Text>
               </View>
             </View>
+
+            <View style={styles.targetColRight}>
+              <Text style={[styles.spentSub, { color: theme.textSecondary, textAlign: 'right' }]}>
+                Target Limit
+              </Text>
+              <Text style={[styles.targetValText, { color: theme.text }]}>
+                {formatCurrency(targetBudget)}
+              </Text>
+            </View>
           </View>
+
+          {/* Progress Bar with Color Warning */}
+          <View style={[styles.healthProgressTrack, { backgroundColor: isDark ? '#262A34' : '#E2E8F0' }]}>
+            <View
+              style={[
+                styles.healthProgressFill,
+                {
+                  width: `${Math.min(100, budgetRatio)}%`,
+                  backgroundColor: isOverBudget ? '#F43F5E' : budgetRatio >= 85 ? '#F59E0B' : '#10B981',
+                },
+              ]}
+            />
+          </View>
+
+          {/* Health Footer / Overage Detail */}
+          <View style={styles.healthFooterRow}>
+            <Text
+              style={[
+                styles.healthFooterText,
+                { color: isOverBudget ? '#F43F5E' : theme.textSecondary, fontWeight: isOverBudget ? '700' : '500' },
+              ]}>
+              {isOverBudget
+                ? `+${formatCurrency(overageAmount)} over budget (${displayBudgetPercentage}% used)`
+                : `${formatCurrency(remainingBudget)} remaining (${100 - displayBudgetPercentage}% free)`}
+            </Text>
+            <Text style={[styles.healthCategoriesCount, { color: theme.textMuted }]}>
+              {envelopes.length} active {envelopes.length === 1 ? 'category' : 'categories'}
+            </Text>
+          </View>
+
+          {/* Warning State Banner if Over Budget */}
+          {isOverBudget && (
+            <View style={[styles.overBudgetWarningBanner, { backgroundColor: isDark ? 'rgba(244, 63, 94, 0.12)' : '#FFE4E6' }]}>
+              <Warning size={moderateScale(16)} color="#F43F5E" weight="bold" />
+              <Text style={[styles.warningBannerText, { color: '#F43F5E' }]}>
+                Spending has exceeded your target by {formatCurrency(overageAmount)}. Review allocations below to curb discretionary expenses.
+              </Text>
+            </View>
+          )}
         </View>
 
-        {/* 4. ALLOCATION SPLIT INTERACTIVE SVG DONUT CHART */}
+        {/* 4. ALLOCATION SPLIT INTERACTIVE SVG DONUT CHART (TOP 5 + OTHER) */}
         <View style={[styles.allocationCard, { backgroundColor: isDark ? '#181B25' : '#FFFFFF', borderColor: theme.border }]}>
           <View style={styles.allocationHeader}>
             <View>
               <Text style={[styles.sectionTitle, { color: theme.text }]}>Allocation Split</Text>
               <Text style={[styles.activitySub, { color: theme.textSecondary }]}>
-                Tap slice or card to isolate category metrics
+                Top 5 spending categories + Other
               </Text>
             </View>
             <Pressable
@@ -359,7 +533,7 @@ export default function AnalyticsScreen() {
                     strokeWidth={strokeWidth}
                     fill="none"
                   />
-                  {/* Category Slices */}
+                  {/* Category Slices (Top 5 + Other) */}
                   {donutSlices.map((slice, idx) => {
                     const strokeDash = Math.max(1, slice.dashLength - 3);
                     const strokeGap = circumference - strokeDash;
@@ -396,21 +570,22 @@ export default function AnalyticsScreen() {
                   },
                 ]}>
                 <Text style={[styles.centerSubLabel, { color: theme.textSecondary }]}>SPENT TOTAL</Text>
-                <Text style={[styles.centerAmountText, { color: theme.text }]}>
+                <Text style={[styles.centerAmountText, { color: isOverBudget ? '#F43F5E' : theme.text }]}>
                   {formatCurrency(totalSpent)}
                 </Text>
                 <Text style={[styles.centerCategoryCount, { color: theme.textMuted }]}>
-                  {envelopes.length} Active Categories
+                  {envelopes.length} Total Categories
                 </Text>
               </View>
             </View>
           </View>
 
-          {/* Interactive Legend Grid (2 Columns) */}
+          {/* Interactive Legend Grid (Top 5 + Other) */}
           <View style={styles.legendGrid}>
-            {envelopes.map((item) => {
+            {donutCategories.map((item) => {
               const isSelected = selectedLegendCategory === item.id;
               const slice = donutSlices.find((s) => s.id === item.id);
+              const isOther = item.id === 'other_grouped';
 
               return (
                 <Pressable
@@ -420,25 +595,97 @@ export default function AnalyticsScreen() {
                     { backgroundColor: isDark ? '#1C1F29' : '#F8FAFC' },
                     isSelected && { borderColor: item.color, borderWidth: 1.5 },
                   ]}
-                  onPress={() =>
-                    setSelectedLegendCategory((curr) => (curr === item.id ? null : item.id))
-                  }>
+                  onPress={() => {
+                    if (isOther) {
+                      setIsOtherExpanded((prev) => !prev);
+                      setSelectedLegendCategory((curr) => (curr === item.id ? null : item.id));
+                    } else {
+                      setSelectedLegendCategory((curr) => (curr === item.id ? null : item.id));
+                    }
+                  }}>
                   <View style={styles.legendLeft}>
                     <View style={[styles.legendColorDot, { backgroundColor: item.color }]} />
-                    <Text style={[styles.legendName, { color: theme.text }]} numberOfLines={1}>
-                      {item.name}
-                    </Text>
+                    <View style={styles.legendTextWrap}>
+                      <Text style={[styles.legendName, { color: theme.text }]} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                      {isOther && (
+                        <Text style={[styles.tapToExpandText, { color: theme.primary }]}>
+                          {isOtherExpanded ? 'Tap to close' : 'Tap to expand'}
+                        </Text>
+                      )}
+                    </View>
                   </View>
-                  <Text style={[styles.legendPercent, { color: theme.text }]}>
-                    {slice?.percentage ?? 0}%
-                  </Text>
+                  <View style={styles.legendRight}>
+                    <Text style={[styles.legendPercent, { color: theme.text }]}>
+                      {slice?.percentage ?? 0}%
+                    </Text>
+                    {isOther && (
+                      isOtherExpanded ? (
+                        <CaretUp size={moderateScale(12)} color={theme.primary} weight="bold" />
+                      ) : (
+                        <CaretDown size={moderateScale(12)} color={theme.primary} weight="bold" />
+                      )
+                    )}
+                  </View>
                 </Pressable>
               );
             })}
           </View>
+
+          {/* Expanded Other Breakdown (When user taps "Other" to expand) */}
+          {isOtherExpanded && otherCategories.length > 0 && (
+            <View
+              style={[
+                styles.otherBreakdownCard,
+                { backgroundColor: isDark ? '#141720' : '#F1F5F9', borderColor: theme.border },
+              ]}>
+              <View style={styles.otherBreakdownHeader}>
+                <View style={styles.otherHeaderTitleRow}>
+                  <Text style={[styles.otherBreakdownTitle, { color: theme.text }]}>
+                    Other Categories Breakdown ({otherCategories.length})
+                  </Text>
+                </View>
+                <Pressable hitSlop={8} onPress={() => setIsOtherExpanded(false)}>
+                  <Text style={[styles.collapseLinkText, { color: theme.primary }]}>Collapse ✕</Text>
+                </Pressable>
+              </View>
+
+              <View style={styles.otherCategoriesList}>
+                {otherCategories.map((otherItem) => (
+                  <View
+                    key={`other-item-${otherItem.id}`}
+                    style={[
+                      styles.otherCategoryRow,
+                      { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF', borderColor: theme.border },
+                    ]}>
+                    <View style={styles.otherRowLeft}>
+                      <View style={[styles.otherIconSquircle, { backgroundColor: `${otherItem.color}25` }]}>
+                        <CategoryIcon name={otherItem.icon} size={moderateScale(16)} color={otherItem.color} />
+                      </View>
+                      <View>
+                        <Text style={[styles.otherCatName, { color: theme.text }]}>{otherItem.name}</Text>
+                        <Text style={[styles.otherCatCount, { color: theme.textMuted }]}>
+                          {otherItem.txCount} txs
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.otherRowRight}>
+                      <Text style={[styles.otherCatSpent, { color: theme.text }]}>
+                        {formatCurrency(otherItem.spent)}
+                      </Text>
+                      <Text style={[styles.otherCatPct, { color: otherItem.color }]}>
+                        {otherItem.percentage}%
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
         </View>
 
-        {/* 5. CATEGORY ALLOCATIONS LISTING */}
+        {/* 5. ALL CATEGORY ALLOCATIONS LISTING */}
         <View style={styles.envelopesSection}>
           <View style={styles.envelopesHeader}>
             <View>
@@ -449,7 +696,7 @@ export default function AnalyticsScreen() {
             </View>
             <Pressable
               style={styles.addPoolBtn}
-              onPress={() => Alert.alert('Add Category', 'Create a new expense category from the + button in the bottom bar.')}>
+              onPress={() => router.push('/(modals)/add-transaction')}>
               <PlusCircle size={moderateScale(18)} color="#10B981" weight="fill" />
               <Text style={[styles.addPoolText, { color: '#10B981' }]}>Add Category</Text>
             </Pressable>
@@ -484,13 +731,18 @@ export default function AnalyticsScreen() {
                       setExpandedCategoryId((curr) => (curr === item.id ? null : item.id))
                     }>
                     <View style={styles.envLeft}>
-                      <View style={[styles.envIconCircle, { backgroundColor: item.color + '22' }]}>
+                      <View style={[styles.envIconCircle, { backgroundColor: `${item.color}25` }]}>
                         <CategoryIcon name={item.icon} size={moderateScale(20)} color={item.color} />
                       </View>
                       <View>
                         <Text style={[styles.envName, { color: theme.text }]}>{item.name}</Text>
                       </View>
                     </View>
+                    {isExpanded ? (
+                      <CaretUp size={moderateScale(16)} color={theme.textSecondary} />
+                    ) : (
+                      <CaretDown size={moderateScale(16)} color={theme.textSecondary} />
+                    )}
                   </Pressable>
 
                   {/* Amount Row */}
@@ -506,7 +758,12 @@ export default function AnalyticsScreen() {
 
                   {/* Progress Bar */}
                   <View style={[styles.envProgressTrack, { backgroundColor: isDark ? '#262A34' : '#E2E8F0' }]}>
-                    <View style={[styles.envProgressFill, { width: `${item.percentage}%`, backgroundColor: item.color }]} />
+                    <View
+                      style={[
+                        styles.envProgressFill,
+                        { width: `${Math.min(100, item.percentage)}%`, backgroundColor: item.color },
+                      ]}
+                    />
                   </View>
 
                   {/* Card Sub-Footer */}
@@ -517,49 +774,47 @@ export default function AnalyticsScreen() {
                     <Text style={[styles.envNote, { color: theme.textSecondary }]}>{item.note}</Text>
                   </View>
 
-                {/* Expanded Transactions for this Category */}
-                {isExpanded && (
-                  <View style={[styles.expandedTxList, { borderTopColor: isDark ? '#262A34' : '#F1F5F9' }]}>
-                    {catTxs.length > 0 ? (
-                      catTxs.map((tx) => (
-                        <View key={tx.id} style={styles.txRow}>
-                          <View style={styles.txRowLeft}>
-                            <Text style={[styles.txDesc, { color: theme.text }]}>
-                              {tx.description || item.name}
-                            </Text>
-                            <Text style={[styles.txDate, { color: theme.textMuted }]}>
-                              {new Date(tx.date).toLocaleDateString([], { month: 'short', day: 'numeric' })}
-                            </Text>
+                  {/* Expanded Transactions for this Category */}
+                  {isExpanded && (
+                    <View style={[styles.expandedTxList, { borderTopColor: theme.border }]}>
+                      {catTxs.length === 0 ? (
+                        <Text style={[styles.noTxText, { color: theme.textMuted }]}>
+                          No transactions found for this category in this cycle.
+                        </Text>
+                      ) : (
+                        catTxs.map((tx) => (
+                          <View key={tx.id} style={styles.txRow}>
+                            <View style={styles.txRowLeft}>
+                              <Text style={[styles.txDesc, { color: theme.text }]}>
+                                {tx.description || item.name}
+                              </Text>
+                              <Text style={[styles.txDate, { color: theme.textMuted }]}>
+                                {new Date(tx.date).toLocaleDateString([], {
+                                  month: 'short',
+                                  day: 'numeric',
+                                })} • {tx.wallet_name || 'Main Wallet'}
+                              </Text>
+                            </View>
+                            <View style={styles.txRowRight}>
+                              <Text style={[styles.txAmount, { color: '#F43F5E' }]}>
+                                -{formatCurrency(tx.amount)}
+                              </Text>
+                              <Pressable
+                                style={styles.txDeleteMiniBtn}
+                                hitSlop={8}
+                                onPress={() => handleDeleteTransaction(tx)}>
+                                <Trash size={moderateScale(13)} color="#F43F5E" />
+                              </Pressable>
+                            </View>
                           </View>
-                          <View style={styles.txRowRight}>
-                            <Text style={[styles.txAmount, { color: '#F43F5E' }]}>
-                              -{formatCurrency(tx.amount)}
-                            </Text>
-                            <Pressable
-                              style={({ pressed }) => [
-                                styles.txRowDeleteBtn,
-                                {
-                                  opacity: pressed ? 0.6 : 1,
-                                  backgroundColor: isDark ? 'rgba(244, 63, 94, 0.15)' : '#FFE4E6',
-                                },
-                              ]}
-                              hitSlop={8}
-                              onPress={() => handleDeleteTransaction(tx)}>
-                              <Trash size={moderateScale(14)} color="#F43F5E" />
-                            </Pressable>
-                          </View>
-                        </View>
-                      ))
-                    ) : (
-                      <Text style={[styles.noTxText, { color: theme.textMuted }]}>
-                        No recent transactions logged in this category for this month.
-                      </Text>
-                    )}
-                  </View>
-                )}
-              </View>
-            );
-          }))}
+                        ))
+                      )}
+                    </View>
+                  )}
+                </View>
+              );
+            })
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -583,48 +838,45 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   avatarCircle: {
-    width: moderateScale(34),
-    height: moderateScale(34),
+    width: moderateScale(36),
+    height: moderateScale(36),
     borderRadius: Radius.full,
     alignItems: 'center',
     justifyContent: 'center',
   },
   appBranding: {
     fontSize: fontScale(10),
-    fontWeight: '700',
-    letterSpacing: 1.2,
+    fontWeight: '800',
+    letterSpacing: 1.5,
   },
   screenTitle: {
     fontSize: fontScale(18),
     fontWeight: '800',
-    letterSpacing: -0.3,
+    letterSpacing: -0.5,
   },
   iconButton: {
-    width: moderateScale(40),
-    height: moderateScale(40),
+    width: moderateScale(36),
+    height: moderateScale(36),
     borderRadius: Radius.full,
     alignItems: 'center',
     justifyContent: 'center',
   },
   scrollContent: {
-    paddingHorizontal: Spacing.md,
-    paddingBottom: moderateScale(80),
+    padding: Spacing.lg,
+    paddingBottom: Spacing.xxxl,
     gap: Spacing.md,
   },
-
-  /* Period Nav */
   periodNavContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
+    padding: Spacing.sm,
     borderRadius: Radius.xl,
     borderWidth: 1,
   },
   periodNavBtn: {
-    width: moderateScale(34),
-    height: moderateScale(34),
+    width: moderateScale(32),
+    height: moderateScale(32),
     borderRadius: Radius.full,
     alignItems: 'center',
     justifyContent: 'center',
@@ -635,29 +887,41 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   periodMonthText: {
-    fontSize: fontScale(16),
+    fontSize: fontScale(14),
     fontWeight: '700',
   },
-  horizonScroll: {
-    gap: Spacing.xs,
-    paddingVertical: moderateScale(2),
+  segmentedControlWrap: {
+    flexDirection: 'row',
+    borderRadius: Radius.xl,
+    padding: moderateScale(3),
+    borderWidth: 1,
   },
-  horizonPill: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: moderateScale(7),
-    borderRadius: Radius.full,
+  segmentBtn: {
+    flex: 1,
+    paddingVertical: moderateScale(8),
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: Radius.lg,
   },
-  horizonPillText: {
-    fontSize: fontScale(12),
+  segmentBtnActive: {
+    elevation: 2,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+  },
+  segmentBtnText: {
+    fontSize: fontScale(11),
   },
 
-  /* Budget Health Status Banner */
+  /* Budget Health Card */
   budgetHealthCard: {
     borderRadius: Radius.xl,
     padding: Spacing.md,
-    borderWidth: 1,
+    borderWidth: 1.5,
     position: 'relative',
     overflow: 'hidden',
+    gap: Spacing.xs,
   },
   healthBannerGlow: {
     position: 'absolute',
@@ -666,13 +930,11 @@ const styles = StyleSheet.create({
     width: moderateScale(150),
     height: moderateScale(150),
     borderRadius: Radius.full,
-    backgroundColor: 'rgba(16, 185, 129, 0.1)',
   },
   healthHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Spacing.xs,
   },
   healthTitleRow: {
     flexDirection: 'row',
@@ -685,28 +947,32 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
   },
   healthStatusLabel: {
-    color: '#10B981',
     fontSize: fontScale(11),
-    fontWeight: '700',
+    fontWeight: '800',
     letterSpacing: 0.8,
   },
   statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: Spacing.sm,
     paddingVertical: moderateScale(3),
     borderRadius: Radius.full,
   },
   statusBadgeText: {
     fontSize: fontScale(10),
-    fontWeight: '600',
   },
   spentVsTargetRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    marginVertical: Spacing.xs,
+    marginTop: Spacing.xs,
+  },
+  targetColRight: {
+    alignItems: 'flex-end',
   },
   spentSub: {
     fontSize: fontScale(11),
+    fontWeight: '500',
   },
   spentValRow: {
     flexDirection: 'row',
@@ -719,10 +985,45 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: -0.5,
   },
-  spentPercentText: {
-    color: '#10B981',
-    fontSize: fontScale(14),
+  targetValText: {
+    fontSize: fontScale(16),
     fontWeight: '700',
+    marginTop: moderateScale(2),
+  },
+  healthProgressTrack: {
+    height: moderateScale(7),
+    borderRadius: Radius.full,
+    overflow: 'hidden',
+    marginVertical: Spacing.xs,
+  },
+  healthProgressFill: {
+    height: '100%',
+    borderRadius: Radius.full,
+  },
+  healthFooterRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  healthFooterText: {
+    fontSize: fontScale(11),
+  },
+  healthCategoriesCount: {
+    fontSize: fontScale(10),
+  },
+  overBudgetWarningBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    padding: Spacing.sm,
+    borderRadius: Radius.md,
+    marginTop: Spacing.xs,
+  },
+  warningBannerText: {
+    flex: 1,
+    fontSize: fontScale(11),
+    fontWeight: '600',
+    lineHeight: 16,
   },
 
   /* Allocation Split Donut */
@@ -739,7 +1040,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: fontScale(16),
-    fontWeight: '700',
+    fontWeight: '800',
   },
   activitySub: {
     fontSize: fontScale(12),
@@ -807,81 +1108,95 @@ const styles = StyleSheet.create({
     height: moderateScale(10),
     borderRadius: Radius.full,
   },
+  legendTextWrap: {
+    flex: 1,
+  },
   legendName: {
     fontSize: fontScale(12),
     fontWeight: '600',
-    flex: 1,
+  },
+  tapToExpandText: {
+    fontSize: fontScale(9),
+    fontWeight: '700',
+  },
+  legendRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: moderateScale(2),
   },
   legendPercent: {
     fontSize: fontScale(12),
     fontWeight: '700',
   },
-
-  /* Smart Insight Alert */
-  insightAlertCard: {
-    flexDirection: 'row',
-    padding: Spacing.md,
-    borderRadius: Radius.xl,
+  otherBreakdownCard: {
+    marginTop: Spacing.md,
+    padding: Spacing.sm,
+    borderRadius: Radius.lg,
     borderWidth: 1,
-    gap: Spacing.sm,
+    gap: Spacing.xs,
   },
-  alertIconCircle: {
-    width: moderateScale(36),
-    height: moderateScale(36),
+  otherBreakdownHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.xs,
+    paddingBottom: moderateScale(4),
+  },
+  otherHeaderTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  otherBreakdownTitle: {
+    fontSize: fontScale(12),
+    fontWeight: '800',
+  },
+  collapseLinkText: {
+    fontSize: fontScale(11),
+    fontWeight: '700',
+  },
+  otherCategoriesList: {
+    gap: moderateScale(4),
+  },
+  otherCategoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: Spacing.xs,
     borderRadius: Radius.md,
+    borderWidth: 1,
+  },
+  otherRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  otherIconSquircle: {
+    width: moderateScale(26),
+    height: moderateScale(26),
+    borderRadius: Radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  alertContent: {
-    flex: 1,
+  otherCatName: {
+    fontSize: fontScale(11),
+    fontWeight: '600',
   },
-  alertHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  otherCatCount: {
+    fontSize: fontScale(9),
   },
-  alertHeading: {
-    fontSize: fontScale(13),
-    fontWeight: '700',
+  otherRowRight: {
+    alignItems: 'flex-end',
   },
-  alertPill: {
-    paddingHorizontal: moderateScale(6),
-    paddingVertical: moderateScale(1),
-    borderRadius: Radius.sm,
-    backgroundColor: 'rgba(244, 63, 94, 0.15)',
-  },
-  alertPillText: {
-    color: '#F43F5E',
-    fontSize: fontScale(10),
-    fontWeight: '700',
-  },
-  alertMessage: {
-    fontSize: fontScale(12),
-    lineHeight: moderateScale(17),
-    marginTop: moderateScale(4),
-  },
-  alertActionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-    marginTop: Spacing.sm,
-  },
-  alertActionBtn: {
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: moderateScale(4),
-    borderRadius: Radius.sm,
-  },
-  alertActionBtnText: {
-    color: '#FFFFFF',
+  otherCatSpent: {
     fontSize: fontScale(11),
     fontWeight: '700',
   },
-  alertDismissText: {
-    fontSize: fontScale(11),
-    textDecorationLine: 'underline',
+  otherCatPct: {
+    fontSize: fontScale(9),
+    fontWeight: '700',
   },
 
-  /* Category Envelopes */
+  /* Category Allocations */
   envelopesSection: {
     gap: Spacing.sm,
   },
@@ -943,7 +1258,7 @@ const styles = StyleSheet.create({
   },
   envPercentageText: {
     fontSize: fontScale(13),
-    fontWeight: '700',
+    fontWeight: '800',
   },
   envProgressTrack: {
     height: moderateScale(6),
@@ -988,20 +1303,17 @@ const styles = StyleSheet.create({
   txDate: {
     fontSize: fontScale(10),
   },
+  txRowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
   txAmount: {
     fontSize: fontScale(13),
     fontWeight: '700',
   },
-  txRowRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  txRowDeleteBtn: {
+  txDeleteMiniBtn: {
     padding: moderateScale(4),
-    borderRadius: Radius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   noTxText: {
     fontSize: fontScale(11),
