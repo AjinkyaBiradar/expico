@@ -1,18 +1,22 @@
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import {
   Alarm,
+  ArrowCounterClockwise,
   ArrowsClockwise,
   Bell,
-  CalendarBlank,
+  CaretLeft,
+  CaretRight,
   Check,
+  CheckCircle,
+  Clock,
   Plus,
   Trash,
   Warning,
   WarningCircle,
   X,
 } from 'phosphor-react-native';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Modal,
@@ -45,14 +49,34 @@ import { formatCurrency, generateUUID } from '@/utils/formatters';
 import { useSettings } from '@/utils/settings';
 import { fontScale, moderateScale, Radius, Spacing } from '@/utils/styling';
 
-type ReminderSectionTab = 'all' | 'overdue' | 'today' | 'upcoming' | 'recurring';
+type ReminderSectionTab = 'all' | 'overdue' | 'today' | 'tomorrow' | 'later' | 'done';
+type FrequencyType = 'once' | 'daily' | 'weekly';
+
+interface QuickSuggestion {
+  title: string;
+  category: string;
+  icon: string;
+  hours: number;
+  minutes: number;
+  frequency: FrequencyType;
+  emoji: string;
+}
+
+const QUICK_SUGGESTIONS: QuickSuggestion[] = [
+  { title: 'Drink water', category: 'Health', icon: 'Drop', hours: 9, minutes: 0, frequency: 'daily', emoji: '💧' },
+  { title: 'Take vitamins', category: 'Health', icon: 'FirstAid', hours: 8, minutes: 30, frequency: 'daily', emoji: '💊' },
+  { title: 'Workout', category: 'Fitness', icon: 'TrendUp', hours: 18, minutes: 0, frequency: 'daily', emoji: '🏋️' },
+  { title: 'Call home', category: 'Family', icon: 'DeviceMobile', hours: 19, minutes: 30, frequency: 'weekly', emoji: '📞' },
+  { title: 'Study', category: 'Education', icon: 'GraduationCap', hours: 16, minutes: 0, frequency: 'daily', emoji: '📚' },
+];
 
 export default function RemindersScreen() {
   const db = useSQLiteContext();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const theme = isDark ? Colors.dark : Colors.light;
-  const { currency } = useSettings();
+  const { currency, setDueSoonCount } = useSettings();
+  const params = useLocalSearchParams<{ openAdd?: string }>();
 
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [wallets, setWallets] = useState<Wallet[]>([]);
@@ -60,16 +84,37 @@ export default function RemindersScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<ReminderSectionTab>('all');
 
+  // Deletion with Undo state
+  const [deletedReminder, setDeletedReminder] = useState<Reminder | null>(null);
+  const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // New Reminder Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('Bills');
   const [selectedWalletId, setSelectedWalletId] = useState<string>('');
-  const [frequency, setFrequency] = useState<'one-time' | 'weekly' | 'monthly' | 'yearly'>('one-time');
-  const [dueDate, setDueDate] = useState<Date>(new Date());
+  const [frequency, setFrequency] = useState<FrequencyType>('once');
+
+  // Date and Time picker state
+  const [selectedDateOffset, setSelectedDateOffset] = useState<number>(0); // 0 = Today, 1 = Tomorrow, etc.
+  const [selectedHour, setSelectedHour] = useState<number>(9);
+  const [selectedMinute, setSelectedMinute] = useState<number>(0);
+  const [selectedPeriod, setSelectedPeriod] = useState<'AM' | 'PM'>('AM');
   const [notes, setNotes] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+
+  // Quick feedback toast (e.g. "Completed! Jumped to tomorrow at 9:00 AM")
+  const [feedbackToast, setFeedbackToast] = useState<string | null>(null);
+  const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = (msg: string) => {
+    if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
+    setFeedbackToast(msg);
+    feedbackTimeoutRef.current = setTimeout(() => {
+      setFeedbackToast(null);
+    }, 3500);
+  };
 
   const loadData = useCallback(async () => {
     try {
@@ -98,83 +143,141 @@ export default function RemindersScreen() {
     }, [loadData])
   );
 
+  // Open creation modal
+  const handleOpenAddReminder = useCallback(() => {
+    setTitle('');
+    setAmount('');
+    setSelectedCategory(categories[0]?.name || 'General');
+    if (wallets.length > 0) setSelectedWalletId(wallets[0].id);
+    setFrequency('once');
+    setSelectedDateOffset(0);
+
+    const now = new Date();
+    const currentH = now.getHours();
+    const period = currentH >= 12 ? 'PM' : 'AM';
+    const displayH = currentH % 12 === 0 ? 12 : currentH % 12;
+    setSelectedHour(displayH);
+    setSelectedMinute(now.getMinutes() > 30 ? 0 : 30);
+    setSelectedPeriod(period);
+    setNotes('');
+    setIsModalOpen(true);
+  }, [categories, wallets]);
+
+  // Listen to openAdd trigger from center FAB or notifications
+  useEffect(() => {
+    if (params.openAdd) {
+      const timer = setTimeout(() => {
+        handleOpenAddReminder();
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [params.openAdd, handleOpenAddReminder]);
+
   const handleRefresh = async () => {
     setRefreshing(true);
     await loadData();
     setRefreshing(false);
   };
 
-  // Grouping logic for Overdue, Today, Upcoming, Recurring
-  const { overdueList, todayList, upcomingList, recurringList, paidList, startOfToday, endOfToday } = useMemo(() => {
+  // Grouping logic: Overdue, Today, Tomorrow, Later, Done
+  const {
+    overdueList,
+    todayList,
+    tomorrowList,
+    laterList,
+    doneList,
+    startOfToday,
+    endOfToday,
+    endOfTomorrow,
+  } = useMemo(() => {
     const now = new Date();
     const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime();
     const endToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime();
 
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const endTomorrow = new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(), 23, 59, 59, 999).getTime();
+
     const overdue: Reminder[] = [];
-    const today: Reminder[] = [];
-    const upcoming: Reminder[] = [];
-    const recurring: Reminder[] = [];
-    const paid: Reminder[] = [];
+    const todayGroup: Reminder[] = [];
+    const tomorrowGroup: Reminder[] = [];
+    const later: Reminder[] = [];
+    const done: Reminder[] = [];
 
     reminders.forEach((r) => {
       if (r.is_paid === 1) {
-        paid.push(r);
+        done.push(r);
         return;
-      }
-
-      if (r.frequency && r.frequency !== 'one-time') {
-        recurring.push(r);
       }
 
       if (r.due_date < startToday) {
         overdue.push(r);
       } else if (r.due_date >= startToday && r.due_date <= endToday) {
-        today.push(r);
+        todayGroup.push(r);
+      } else if (r.due_date > endToday && r.due_date <= endTomorrow) {
+        tomorrowGroup.push(r);
       } else {
-        upcoming.push(r);
+        later.push(r);
       }
     });
 
     return {
       overdueList: overdue,
-      todayList: today,
-      upcomingList: upcoming,
-      recurringList: recurring,
-      paidList: paid,
+      todayList: todayGroup,
+      tomorrowList: tomorrowGroup,
+      laterList: later,
+      doneList: done,
       startOfToday: startToday,
       endOfToday: endToday,
+      endOfTomorrow: endTomorrow,
     };
   }, [reminders]);
 
+  // Update tab badge count for "due soon" (Overdue + Today + Tomorrow)
+  useEffect(() => {
+    const dueSoon = overdueList.length + todayList.length + tomorrowList.length;
+    setDueSoonCount(dueSoon);
+  }, [overdueList.length, todayList.length, tomorrowList.length, setDueSoonCount]);
+
   const totalPendingAmount = useMemo(() => {
     return reminders
-      .filter((r) => r.is_paid === 0)
+      .filter((r) => r.is_paid === 0 && r.amount > 0)
       .reduce((sum, r) => sum + r.amount, 0);
   }, [reminders]);
 
-  // Open creation modal
-  const handleOpenAddReminder = () => {
-    setTitle('');
+  const handleApplySuggestion = (suggestion: QuickSuggestion) => {
+    setTitle(suggestion.title);
+    setSelectedCategory(suggestion.category);
+    setFrequency(suggestion.frequency);
+    const displayH = suggestion.hours % 12 === 0 ? 12 : suggestion.hours % 12;
+    const period = suggestion.hours >= 12 ? 'PM' : 'AM';
+    setSelectedHour(displayH);
+    setSelectedMinute(suggestion.minutes);
+    setSelectedPeriod(period);
     setAmount('');
-    setSelectedCategory(categories[0]?.name || 'Bills');
-    if (wallets.length > 0) setSelectedWalletId(wallets[0].id);
-    setFrequency('one-time');
-    setDueDate(new Date());
-    setNotes('');
-    setIsModalOpen(true);
+  };
+
+  const calculateTargetDueDate = (): number => {
+    const target = new Date();
+    target.setDate(target.getDate() + selectedDateOffset);
+
+    let h24 = selectedHour % 12;
+    if (selectedPeriod === 'PM') h24 += 12;
+
+    target.setHours(h24, selectedMinute, 0, 0);
+    return target.getTime();
   };
 
   const handleSaveReminder = async () => {
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
-      Alert.alert('Required Title', 'Please enter a title for the reminder.');
+      Alert.alert('Required Title', 'Please enter a reminder title or tap a quick suggestion.');
       return;
     }
+
     const parsedAmount = parseFloat(amount);
-    if (isNaN(parsedAmount) || parsedAmount <= 0) {
-      Alert.alert('Invalid Amount', `Please enter a valid amount greater than ${currency.symbol}0.`);
-      return;
-    }
+    const safeAmount = isNaN(parsedAmount) || parsedAmount < 0 ? 0 : parsedAmount;
+    const dueTime = calculateTargetDueDate();
 
     setIsCreating(true);
     try {
@@ -182,17 +285,17 @@ export default function RemindersScreen() {
       await createReminder(db, {
         id,
         title: trimmedTitle,
-        amount: parsedAmount,
-        due_date: dueDate.getTime(),
+        amount: safeAmount,
+        due_date: dueTime,
         category: selectedCategory,
-        wallet_id: selectedWalletId || null,
+        wallet_id: safeAmount > 0 && selectedWalletId ? selectedWalletId : null,
         frequency,
         notes: notes.trim() || null,
       });
 
       setIsModalOpen(false);
       await loadData();
-      Alert.alert('✨ Reminder Created', `"${trimmedTitle}" set for ${formatCurrency(parsedAmount)}.`);
+      showToast(`Reminder set for ${trimmedTitle}`);
     } catch (err) {
       console.error('Failed to save reminder:', err);
       Alert.alert('Error', 'Failed to save reminder. Please try again.');
@@ -201,113 +304,106 @@ export default function RemindersScreen() {
     }
   };
 
-  const handleTogglePaid = (reminder: Reminder) => {
+  // Complete / Finish task
+  const handleToggleComplete = async (reminder: Reminder) => {
     if (reminder.is_paid === 1) {
-      Alert.alert('Undo Payment', `Mark "${reminder.title}" as unpaid?`, [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Mark Unpaid',
-          onPress: async () => {
-            try {
-              await markReminderUnpaid(db, reminder.id);
-              await loadData();
-            } catch (err) {
-              console.error('Failed to mark unpaid:', err);
-            }
-          },
-        },
-      ]);
+      // Re-activate / un-finish
+      try {
+        await markReminderUnpaid(db, reminder.id);
+        await loadData();
+        showToast(`Restored "${reminder.title}"`);
+      } catch (err) {
+        console.error('Failed to restore reminder:', err);
+      }
       return;
     }
 
-    const linkedWallet = wallets.find((w) => w.id === reminder.wallet_id);
-    Alert.alert(
-      'Mark as Paid',
-      `How would you like to mark "${reminder.title}" as paid?${
-        linkedWallet ? `\n\nLinked Wallet: ${linkedWallet.name} (${formatCurrency(linkedWallet.current_balance)})` : ''
-      }`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Mark Paid Only',
-          onPress: async () => {
-            try {
-              await markReminderPaid(db, reminder.id, false);
-              await loadData();
-              Alert.alert('Paid', `"${reminder.title}" marked as settled.`);
-            } catch (err) {
-              console.error('Failed to mark paid:', err);
-            }
-          },
-        },
-        ...(linkedWallet
-          ? [
-              {
-                text: `Pay & Deduct from ${linkedWallet.name}`,
-                onPress: async () => {
-                  try {
-                    await markReminderPaid(db, reminder.id, true);
-                    await loadData();
-                    Alert.alert(
-                      'Payment Logged',
-                      `Recorded ${formatCurrency(reminder.amount)} expense on ${linkedWallet.name} and marked reminder settled.`
-                    );
-                  } catch (err) {
-                    console.error('Failed to deduct and mark paid:', err);
-                  }
-                },
-              },
-            ]
-          : []),
-      ]
-    );
+    // Complete task: Repeating ones jump to their next time!
+    if (reminder.frequency === 'daily' || reminder.frequency === 'weekly') {
+      try {
+        await markReminderPaid(db, reminder.id, false);
+        await loadData();
+        const nextTimeStr = formatTimeDisplay(reminder.due_date);
+        const nextDayLabel = reminder.frequency === 'daily' ? 'tomorrow' : 'next week';
+        showToast(`Completed! Jumped to ${nextDayLabel} at ${nextTimeStr}`);
+      } catch (err) {
+        console.error('Failed to jump reminder:', err);
+      }
+    } else {
+      // Once / non-repeating: mark done
+      try {
+        await markReminderPaid(db, reminder.id, false);
+        await loadData();
+        showToast(`Finished "${reminder.title}"`);
+      } catch (err) {
+        console.error('Failed to mark reminder done:', err);
+      }
+    }
   };
 
-  const handleDeleteReminder = (reminder: Reminder) => {
-    Alert.alert('Delete Reminder', `Are you sure you want to delete "${reminder.title}"?`, [
-      { text: 'Keep', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteReminder(db, reminder.id);
-            await loadData();
-          } catch (err) {
-            console.error('Failed to delete reminder:', err);
-          }
-        },
-      },
-    ]);
+  // Delete with Undo
+  const handleDeleteWithUndo = (reminder: Reminder) => {
+    if (undoTimeoutRef.current) {
+      clearTimeout(undoTimeoutRef.current);
+    }
+
+    // Remove from local list immediately
+    setReminders((prev) => prev.filter((r) => r.id !== reminder.id));
+    setDeletedReminder(reminder);
+
+    // Schedule actual database deletion after 4.5s
+    undoTimeoutRef.current = setTimeout(async () => {
+      try {
+        await deleteReminder(db, reminder.id);
+      } catch (err) {
+        console.error('Failed to delete reminder from db:', err);
+      }
+      setDeletedReminder(null);
+    }, 4500);
   };
 
-  const formatDateDisplay = (timestamp: number) => {
+  const handleUndoDelete = () => {
+    if (undoTimeoutRef.current) {
+      clearTimeout(undoTimeoutRef.current);
+      undoTimeoutRef.current = null;
+    }
+    if (deletedReminder) {
+      setReminders((prev) => [...prev, deletedReminder].sort((a, b) => a.due_date - b.due_date));
+      setDeletedReminder(null);
+      showToast('Deletion undone');
+    }
+  };
+
+  const formatTimeDisplay = (timestamp: number) => {
     const d = new Date(timestamp);
-    const now = new Date();
-    const isToday =
-      d.getDate() === now.getDate() &&
-      d.getMonth() === now.getMonth() &&
-      d.getFullYear() === now.getFullYear();
+    let hours = d.getHours();
+    const minutes = d.getMinutes();
+    const period = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12 || 12;
+    const minStr = minutes < 10 ? `0${minutes}` : `${minutes}`;
+    return `${hours}:${minStr} ${period}`;
+  };
 
-    const tomorrow = new Date(now);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const isTomorrow =
-      d.getDate() === tomorrow.getDate() &&
-      d.getMonth() === tomorrow.getMonth() &&
-      d.getFullYear() === tomorrow.getFullYear();
-
+  const formatDateLabel = (timestamp: number) => {
+    const d = new Date(timestamp);
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const dateStr = `${months[d.getMonth()]} ${d.getDate()}`;
-
-    if (isToday) return 'Today';
-    if (isTomorrow) return 'Tomorrow';
-    return dateStr;
+    return `${months[d.getMonth()]} ${d.getDate()}`;
   };
 
   const renderReminderCard = (item: Reminder) => {
     const isOverdue = item.is_paid === 0 && item.due_date < startOfToday;
     const isToday = item.is_paid === 0 && item.due_date >= startOfToday && item.due_date <= endOfToday;
-    const isPaid = item.is_paid === 1;
+    const isTomorrow = item.is_paid === 0 && item.due_date > endOfToday && item.due_date <= endOfTomorrow;
+    const isDone = item.is_paid === 1;
+
+    const timeStr = formatTimeDisplay(item.due_date);
+    const dateLabel = isToday
+      ? `Today at ${timeStr}`
+      : isTomorrow
+      ? `Tomorrow at ${timeStr}`
+      : isOverdue
+      ? `Overdue • ${formatDateLabel(item.due_date)} ${timeStr}`
+      : `${formatDateLabel(item.due_date)} at ${timeStr}`;
 
     return (
       <View
@@ -316,42 +412,54 @@ export default function RemindersScreen() {
           styles.reminderCard,
           {
             backgroundColor: isDark ? '#1C1F29' : '#FFFFFF',
-            borderColor: isOverdue ? 'rgba(244, 63, 94, 0.4)' : isToday ? 'rgba(245, 158, 11, 0.4)' : theme.border,
-            opacity: isPaid ? 0.65 : 1,
+            borderColor: isOverdue
+              ? 'rgba(244, 63, 94, 0.45)'
+              : isToday
+              ? 'rgba(245, 158, 11, 0.4)'
+              : theme.border,
+            opacity: isDone ? 0.6 : 1,
           },
         ]}>
         <View style={styles.cardHeaderRow}>
-          {/* Category Icon */}
-          <View
-            style={[
-              styles.iconWrapper,
-              {
-                backgroundColor: isOverdue
-                  ? 'rgba(244, 63, 94, 0.15)'
-                  : isToday
-                  ? 'rgba(245, 158, 11, 0.15)'
-                  : isDark
-                  ? '#262A34'
-                  : '#F1F5F9',
-              },
-            ]}>
-            <CategoryIcon
-              name={item.category}
-              size={moderateScale(20)}
-              color={isOverdue ? '#F43F5E' : isToday ? '#F59E0B' : '#10B981'}
-            />
-          </View>
+          {/* Tick Circle Button to finish/unfinish task */}
+          <Pressable
+            style={({ pressed }) => [styles.tickCircleBtn, { opacity: pressed ? 0.7 : 1 }]}
+            hitSlop={moderateScale(8)}
+            onPress={() => handleToggleComplete(item)}>
+            {isDone ? (
+              <CheckCircle size={moderateScale(24)} color="#10B981" weight="fill" />
+            ) : (
+              <View
+                style={[
+                  styles.uncheckCircle,
+                  {
+                    borderColor: isOverdue ? '#F43F5E' : theme.textMuted,
+                  },
+                ]}
+              />
+            )}
+          </Pressable>
 
           {/* Details */}
           <View style={styles.cardDetails}>
             <View style={styles.cardTitleRow}>
-              <Text style={[styles.reminderTitle, { color: theme.text, textDecorationLine: isPaid ? 'line-through' : 'none' }]}>
+              <Text
+                style={[
+                  styles.reminderTitle,
+                  {
+                    color: theme.text,
+                    textDecorationLine: isDone ? 'line-through' : 'none',
+                  },
+                ]}>
                 {item.title}
               </Text>
-              {item.frequency !== 'one-time' && (
-                <View style={[styles.recurringPill, { backgroundColor: isDark ? '#262A34' : '#EEF2FF' }]}>
+
+              {item.frequency !== 'once' && item.frequency !== 'one-time' && (
+                <View style={[styles.repeatBadge, { backgroundColor: isDark ? '#262A34' : '#EEF2FF' }]}>
                   <ArrowsClockwise size={moderateScale(10)} color="#6366F1" weight="bold" />
-                  <Text style={styles.recurringPillText}>{item.frequency}</Text>
+                  <Text style={styles.repeatBadgeText}>
+                    {item.frequency === 'daily' ? 'Every day' : item.frequency === 'weekly' ? 'Every week' : item.frequency}
+                  </Text>
                 </View>
               )}
             </View>
@@ -361,7 +469,7 @@ export default function RemindersScreen() {
                 {isOverdue ? (
                   <WarningCircle size={moderateScale(12)} color="#F43F5E" weight="fill" />
                 ) : (
-                  <CalendarBlank size={moderateScale(12)} color={theme.textSecondary} />
+                  <Clock size={moderateScale(12)} color={theme.textSecondary} />
                 )}
                 <Text
                   style={[
@@ -371,52 +479,39 @@ export default function RemindersScreen() {
                       fontWeight: isOverdue || isToday ? '700' : '500',
                     },
                   ]}>
-                  {formatDateDisplay(item.due_date)}
+                  {dateLabel}
                 </Text>
               </View>
 
-              {item.wallet_name && (
-                <Text style={[styles.walletNameText, { color: theme.textMuted }]}>
-                  • {item.wallet_name}
+              {item.category && item.category !== 'General' && (
+                <Text style={[styles.categoryTagText, { color: theme.textMuted }]}>
+                  • {item.category}
                 </Text>
               )}
             </View>
           </View>
 
-          {/* Amount & Actions */}
+          {/* Amount (if any) & Delete */}
           <View style={styles.cardRight}>
-            <Text
-              style={[
-                styles.amountText,
-                { color: isOverdue ? '#F43F5E' : theme.text, textDecorationLine: isPaid ? 'line-through' : 'none' },
-              ]}>
-              {formatCurrency(item.amount)}
-            </Text>
-
-            <View style={styles.actionIconsRow}>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.checkButton,
+            {item.amount > 0 && (
+              <Text
+                style={[
+                  styles.amountText,
                   {
-                    backgroundColor: isPaid ? '#10B981' : isDark ? '#262A34' : '#F1F5F9',
-                    opacity: pressed ? 0.7 : 1,
+                    color: isOverdue ? '#F43F5E' : theme.text,
+                    textDecorationLine: isDone ? 'line-through' : 'none',
                   },
-                ]}
-                onPress={() => handleTogglePaid(item)}>
-                <Check
-                  size={moderateScale(14)}
-                  color={isPaid ? '#003824' : theme.textSecondary}
-                  weight="bold"
-                />
-              </Pressable>
+                ]}>
+                {formatCurrency(item.amount)}
+              </Text>
+            )}
 
-              <Pressable
-                style={styles.deleteBtn}
-                hitSlop={6}
-                onPress={() => handleDeleteReminder(item)}>
-                <Trash size={moderateScale(14)} color={theme.textMuted} />
-              </Pressable>
-            </View>
+            <Pressable
+              style={styles.deleteBtn}
+              hitSlop={moderateScale(8)}
+              onPress={() => handleDeleteWithUndo(item)}>
+              <Trash size={moderateScale(15)} color={theme.textMuted} />
+            </Pressable>
           </View>
         </View>
 
@@ -454,7 +549,7 @@ export default function RemindersScreen() {
           </View>
           <View>
             <Text style={[styles.appBranding, { color: theme.textSecondary }]}>VAULTFLOW</Text>
-            <Text style={[styles.screenTitle, { color: theme.text }]}>Reminders & Bills</Text>
+            <Text style={[styles.screenTitle, { color: theme.text }]}>Reminders & Tasks</Text>
           </View>
         </View>
 
@@ -472,7 +567,7 @@ export default function RemindersScreen() {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.primary} />
         }>
-        {/* Total Outstanding Card */}
+        {/* Total Overview Card */}
         <View
           style={[
             styles.summaryCard,
@@ -480,7 +575,7 @@ export default function RemindersScreen() {
           ]}>
           <View style={styles.summaryRowTop}>
             <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>
-              PENDING COMMITMENTS
+              TASKS & REMINDERS DUE SOON
             </Text>
             {overdueList.length > 0 && (
               <View style={[styles.alertBadge, { backgroundColor: 'rgba(244, 63, 94, 0.15)' }]}>
@@ -490,9 +585,17 @@ export default function RemindersScreen() {
             )}
           </View>
 
-          <Text style={[styles.summaryAmount, { color: theme.text }]}>
-            {formatCurrency(totalPendingAmount)}
-          </Text>
+          <View style={styles.summaryCountRow}>
+            <Text style={[styles.summaryCountText, { color: theme.text }]}>
+              {overdueList.length + todayList.length + tomorrowList.length}
+            </Text>
+            <Text style={[styles.summaryCountUnit, { color: theme.textSecondary }]}>due soon</Text>
+            {totalPendingAmount > 0 && (
+              <Text style={[styles.summaryAmountText, { color: theme.primary }]}>
+                • {formatCurrency(totalPendingAmount)}
+              </Text>
+            )}
+          </View>
 
           <View style={styles.summaryStatsRow}>
             <View style={styles.statCol}>
@@ -504,22 +607,27 @@ export default function RemindersScreen() {
             <View style={[styles.statDivider, { backgroundColor: isDark ? '#262A34' : '#F1F5F9' }]} />
             <View style={styles.statCol}>
               <Text style={[styles.statVal, { color: '#F59E0B' }]}>{todayList.length}</Text>
-              <Text style={[styles.statSub, { color: theme.textMuted }]}>Due Today</Text>
+              <Text style={[styles.statSub, { color: theme.textMuted }]}>Today</Text>
             </View>
             <View style={[styles.statDivider, { backgroundColor: isDark ? '#262A34' : '#F1F5F9' }]} />
             <View style={styles.statCol}>
-              <Text style={[styles.statVal, { color: '#10B981' }]}>{upcomingList.length}</Text>
-              <Text style={[styles.statSub, { color: theme.textMuted }]}>Upcoming</Text>
+              <Text style={[styles.statVal, { color: '#0EA5E9' }]}>{tomorrowList.length}</Text>
+              <Text style={[styles.statSub, { color: theme.textMuted }]}>Tomorrow</Text>
             </View>
             <View style={[styles.statDivider, { backgroundColor: isDark ? '#262A34' : '#F1F5F9' }]} />
             <View style={styles.statCol}>
-              <Text style={[styles.statVal, { color: '#6366F1' }]}>{recurringList.length}</Text>
-              <Text style={[styles.statSub, { color: theme.textMuted }]}>Recurring</Text>
+              <Text style={[styles.statVal, { color: '#8B5CF6' }]}>{laterList.length}</Text>
+              <Text style={[styles.statSub, { color: theme.textMuted }]}>Later</Text>
+            </View>
+            <View style={[styles.statDivider, { backgroundColor: isDark ? '#262A34' : '#F1F5F9' }]} />
+            <View style={styles.statCol}>
+              <Text style={[styles.statVal, { color: '#10B981' }]}>{doneList.length}</Text>
+              <Text style={[styles.statSub, { color: theme.textMuted }]}>Done</Text>
             </View>
           </View>
         </View>
 
-        {/* Section Tabs */}
+        {/* Section Segmented Filter Pills */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -529,8 +637,9 @@ export default function RemindersScreen() {
             { id: 'all', label: `All (${reminders.filter((r) => r.is_paid === 0).length})` },
             { id: 'overdue', label: `Overdue (${overdueList.length})` },
             { id: 'today', label: `Today (${todayList.length})` },
-            { id: 'upcoming', label: `Upcoming (${upcomingList.length})` },
-            { id: 'recurring', label: `Recurring (${recurringList.length})` },
+            { id: 'tomorrow', label: `Tomorrow (${tomorrowList.length})` },
+            { id: 'later', label: `Later (${laterList.length})` },
+            { id: 'done', label: `Done (${doneList.length})` },
           ].map((tab) => {
             const isSel = activeTab === tab.id;
             return (
@@ -539,11 +648,7 @@ export default function RemindersScreen() {
                 style={[
                   styles.filterTab,
                   {
-                    backgroundColor: isSel
-                      ? theme.primary
-                      : isDark
-                      ? '#1C1F29'
-                      : '#F1F5F9',
+                    backgroundColor: isSel ? theme.primary : isDark ? '#1C1F29' : '#F1F5F9',
                   },
                 ]}
                 onPress={() => setActiveTab(tab.id as ReminderSectionTab)}>
@@ -562,36 +667,55 @@ export default function RemindersScreen() {
           })}
         </ScrollView>
 
-        {/* Filtered Sections Display */}
+        {/* Groups Display: Overdue, Today, Tomorrow, Later, Done */}
         {reminders.length === 0 ? (
           <View style={[styles.emptyContainer, { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF' }]}>
             <Alarm size={moderateScale(48)} color={theme.textMuted} />
-            <Text style={[styles.emptyTitle, { color: theme.text }]}>No Reminders Yet</Text>
+            <Text style={[styles.emptyTitle, { color: theme.text }]}>No Reminders</Text>
             <Text style={[styles.emptySubtitle, { color: theme.textMuted }]}>
-              Never miss a bill or recurring payment again. Tap &quot;+ New&quot; above to set your first reminder.
+              Tap &quot;+ New&quot; or the centre &quot;+&quot; button to add a task, habit, or bill reminder.
             </Text>
           </View>
         ) : (
           <>
             {(activeTab === 'all' || activeTab === 'overdue') &&
-              renderSection('🚨 Overdue Bills', overdueList.length, overdueList, '#F43F5E')}
+              renderSection('🚨 Overdue', overdueList.length, overdueList, '#F43F5E')}
 
             {(activeTab === 'all' || activeTab === 'today') &&
-              renderSection('⚡ Due Today', todayList.length, todayList, '#F59E0B')}
+              renderSection('⚡ Today', todayList.length, todayList, '#F59E0B')}
 
-            {(activeTab === 'all' || activeTab === 'upcoming') &&
-              renderSection('📅 Upcoming Scheduled', upcomingList.length, upcomingList, '#10B981')}
+            {(activeTab === 'all' || activeTab === 'tomorrow') &&
+              renderSection('🌅 Tomorrow', tomorrowList.length, tomorrowList, '#0EA5E9')}
 
-            {activeTab === 'recurring' &&
-              renderSection('🔄 Recurring Subscriptions', recurringList.length, recurringList, '#6366F1')}
+            {(activeTab === 'all' || activeTab === 'later') &&
+              renderSection('📅 Later', laterList.length, laterList, '#8B5CF6')}
 
-            {activeTab === 'all' && paidList.length > 0 &&
-              renderSection('✅ Settled & Paid', paidList.length, paidList, '#6B7280')}
+            {(activeTab === 'all' || activeTab === 'done') &&
+              renderSection('✅ Done', doneList.length, doneList, '#10B981')}
           </>
         )}
       </ScrollView>
 
-      {/* Creation Modal Sheet */}
+      {/* Floating Undo Toast Banner */}
+      {deletedReminder && (
+        <View style={[styles.undoToast, { backgroundColor: isDark ? '#262A34' : '#0F172A' }]}>
+          <Text style={styles.undoToastText}>Reminder deleted</Text>
+          <Pressable style={styles.undoBtn} onPress={handleUndoDelete}>
+            <ArrowCounterClockwise size={moderateScale(14)} color="#10B981" weight="bold" />
+            <Text style={styles.undoBtnText}>UNDO</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {/* Floating Action Feedback Toast */}
+      {feedbackToast && !deletedReminder && (
+        <View style={[styles.feedbackToast, { backgroundColor: isDark ? '#262A34' : '#0F172A' }]}>
+          <CheckCircle size={moderateScale(16)} color="#10B981" weight="fill" />
+          <Text style={styles.feedbackToastText}>{feedbackToast}</Text>
+        </View>
+      )}
+
+      {/* Add Reminder Modal Sheet */}
       <Modal
         visible={isModalOpen}
         transparent
@@ -605,9 +729,9 @@ export default function RemindersScreen() {
 
             <View style={styles.sheetHeader}>
               <View>
-                <Text style={[styles.sheetTitle, { color: theme.text }]}>New Reminder / Bill</Text>
+                <Text style={[styles.sheetTitle, { color: theme.text }]}>Add Reminder</Text>
                 <Text style={[styles.sheetSub, { color: theme.textSecondary }]}>
-                  Keep your bills and dues organized
+                  Type anything or pick a quick suggestion
                 </Text>
               </View>
               <Pressable
@@ -617,10 +741,46 @@ export default function RemindersScreen() {
               </Pressable>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: moderateScale(450) }}>
-              {/* Title */}
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: moderateScale(480) }}>
+              {/* Quick Suggestions Chips */}
               <View style={styles.inputGroup}>
-                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>REMINDER TITLE</Text>
+                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>QUICK SUGGESTIONS</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
+                  {QUICK_SUGGESTIONS.map((item) => (
+                    <Pressable
+                      key={item.title}
+                      style={[
+                        styles.quickSuggestionChip,
+                        {
+                          backgroundColor:
+                            title === item.title
+                              ? 'rgba(16, 185, 129, 0.2)'
+                              : isDark
+                              ? '#1C1F29'
+                              : '#F1F5F9',
+                          borderColor: title === item.title ? '#10B981' : 'transparent',
+                        },
+                      ]}
+                      onPress={() => handleApplySuggestion(item)}>
+                      <Text style={styles.quickSuggestionEmoji}>{item.emoji}</Text>
+                      <Text
+                        style={[
+                          styles.quickSuggestionText,
+                          {
+                            color: title === item.title ? '#10B981' : theme.text,
+                            fontWeight: title === item.title ? '700' : '500',
+                          },
+                        ]}>
+                        {item.title}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+
+              {/* Title Input */}
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>REMINDER / TASK TITLE</Text>
                 <TextInput
                   style={[
                     styles.textInput,
@@ -630,7 +790,7 @@ export default function RemindersScreen() {
                       borderColor: theme.border,
                     },
                   ]}
-                  placeholder="e.g. Electric Bill, Rent, Netflix"
+                  placeholder="e.g. Drink water, Call mom, Rent bill"
                   placeholderTextColor={theme.textMuted}
                   value={title}
                   onChangeText={setTitle}
@@ -638,70 +798,73 @@ export default function RemindersScreen() {
                 />
               </View>
 
-              {/* Amount */}
+              {/* Date Presets */}
               <View style={styles.inputGroup}>
-                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>AMOUNT</Text>
-                <View style={[styles.currencyInputBox, { backgroundColor: isDark ? '#1C1F29' : '#F8FAFC' }]}>
-                  <Text style={[styles.currencySymbol, { color: theme.text }]}>{currency.symbol}</Text>
-                  <TextInput
-                    style={[styles.amountTextInput, { color: theme.text }]}
-                    placeholder="0"
-                    placeholderTextColor={theme.textMuted}
-                    keyboardType="decimal-pad"
-                    value={amount}
-                    onChangeText={setAmount}
-                  />
+                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>DATE</Text>
+                <View style={styles.segmentRow}>
+                  {[
+                    { label: 'Today', offset: 0 },
+                    { label: 'Tomorrow', offset: 1 },
+                    { label: 'In 2 Days', offset: 2 },
+                    { label: 'In 1 Week', offset: 7 },
+                  ].map((d) => {
+                    const isSel = selectedDateOffset === d.offset;
+                    return (
+                      <Pressable
+                        key={d.label}
+                        style={[
+                          styles.segmentButton,
+                          {
+                            backgroundColor: isSel ? '#10B981' : isDark ? '#1C1F29' : '#F1F5F9',
+                          },
+                        ]}
+                        onPress={() => setSelectedDateOffset(d.offset)}>
+                        <Text
+                          style={[
+                            styles.segmentButtonText,
+                            { color: isSel ? '#003824' : theme.text, fontWeight: isSel ? '700' : '500' },
+                          ]}>
+                          {d.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
                 </View>
               </View>
 
-              {/* Quick Chips */}
-              <View style={styles.quickChipsRow}>
-                {[500, 1000, 2000, 5000].map((amt) => (
-                  <Pressable
-                    key={'r_amt_' + amt}
-                    style={[styles.quickChip, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}
-                    onPress={() => {
-                      const cur = parseFloat(amount) || 0;
-                      setAmount((cur + amt).toString());
-                    }}>
-                    <Text style={[styles.quickChipText, { color: theme.text }]}>
-                      +{currency.symbol}{amt}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-
-              {/* Due Date Presets */}
+              {/* Time Picker (Interactive Hour, Minute, AM/PM) */}
               <View style={styles.inputGroup}>
-                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>DUE DATE</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
+                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>TIME</Text>
+
+                {/* Quick Time Presets */}
+                <View style={[styles.segmentRow, { marginBottom: Spacing.sm }]}>
                   {[
-                    { label: 'Today', offsetDays: 0 },
-                    { label: 'Tomorrow', offsetDays: 1 },
-                    { label: 'In 3 Days', offsetDays: 3 },
-                    { label: 'In 1 Week', offsetDays: 7 },
-                    { label: 'End of Month', offsetDays: 30 },
+                    { label: 'Morning (9 AM)', h: 9, m: 0, p: 'AM' as const },
+                    { label: 'Noon (12 PM)', h: 12, m: 0, p: 'PM' as const },
+                    { label: 'Evening (6 PM)', h: 6, m: 0, p: 'PM' as const },
+                    { label: 'Night (9 PM)', h: 9, m: 0, p: 'PM' as const },
                   ].map((preset) => {
-                    const presetDate = new Date();
-                    presetDate.setDate(presetDate.getDate() + preset.offsetDays);
-                    const isSel = dueDate.getDate() === presetDate.getDate() && dueDate.getMonth() === presetDate.getMonth();
+                    const isSel =
+                      selectedHour === preset.h &&
+                      selectedMinute === preset.m &&
+                      selectedPeriod === preset.p;
                     return (
                       <Pressable
                         key={preset.label}
                         style={[
-                          styles.presetChip,
+                          styles.timePresetChip,
                           {
                             backgroundColor: isSel ? '#10B981' : isDark ? '#1C1F29' : '#F1F5F9',
                           },
                         ]}
                         onPress={() => {
-                          const newD = new Date();
-                          newD.setDate(newD.getDate() + preset.offsetDays);
-                          setDueDate(newD);
+                          setSelectedHour(preset.h);
+                          setSelectedMinute(preset.m);
+                          setSelectedPeriod(preset.p);
                         }}>
                         <Text
                           style={[
-                            styles.presetChipText,
+                            styles.timePresetChipText,
                             { color: isSel ? '#003824' : theme.text, fontWeight: isSel ? '700' : '500' },
                           ]}>
                           {preset.label}
@@ -709,40 +872,142 @@ export default function RemindersScreen() {
                       </Pressable>
                     );
                   })}
-                </ScrollView>
+                </View>
+
+                {/* Interactive Time Selector */}
+                <View
+                  style={[
+                    styles.timePickerContainer,
+                    { backgroundColor: isDark ? '#1C1F29' : '#F8FAFC', borderColor: theme.border },
+                  ]}>
+                  {/* Hour Selector */}
+                  <View style={styles.timeComponent}>
+                    <Text style={[styles.timeLabel, { color: theme.textSecondary }]}>HOUR</Text>
+                    <View style={styles.timeValueControls}>
+                      <Pressable
+                        style={styles.timeArrowBtn}
+                        onPress={() => setSelectedHour((prev) => (prev <= 1 ? 12 : prev - 1))}>
+                        <CaretLeft size={moderateScale(16)} color={theme.text} />
+                      </Pressable>
+                      <Text style={[styles.timeValText, { color: theme.text }]}>
+                        {selectedHour < 10 ? `0${selectedHour}` : selectedHour}
+                      </Text>
+                      <Pressable
+                        style={styles.timeArrowBtn}
+                        onPress={() => setSelectedHour((prev) => (prev >= 12 ? 1 : prev + 1))}>
+                        <CaretRight size={moderateScale(16)} color={theme.text} />
+                      </Pressable>
+                    </View>
+                  </View>
+
+                  <Text style={[styles.timeColon, { color: theme.text }]}>:</Text>
+
+                  {/* Minute Selector */}
+                  <View style={styles.timeComponent}>
+                    <Text style={[styles.timeLabel, { color: theme.textSecondary }]}>MIN</Text>
+                    <View style={styles.timeValueControls}>
+                      <Pressable
+                        style={styles.timeArrowBtn}
+                        onPress={() => setSelectedMinute((prev) => (prev === 0 ? 45 : prev - 15))}>
+                        <CaretLeft size={moderateScale(16)} color={theme.text} />
+                      </Pressable>
+                      <Text style={[styles.timeValText, { color: theme.text }]}>
+                        {selectedMinute < 10 ? `0${selectedMinute}` : selectedMinute}
+                      </Text>
+                      <Pressable
+                        style={styles.timeArrowBtn}
+                        onPress={() => setSelectedMinute((prev) => (prev === 45 ? 0 : prev + 15))}>
+                        <CaretRight size={moderateScale(16)} color={theme.text} />
+                      </Pressable>
+                    </View>
+                  </View>
+
+                  {/* AM / PM Toggle */}
+                  <View style={styles.ampmToggleWrap}>
+                    <Pressable
+                      style={[
+                        styles.ampmBtn,
+                        selectedPeriod === 'AM' && { backgroundColor: theme.primary },
+                      ]}
+                      onPress={() => setSelectedPeriod('AM')}>
+                      <Text
+                        style={[
+                          styles.ampmText,
+                          {
+                            color: selectedPeriod === 'AM' ? '#003824' : theme.textSecondary,
+                            fontWeight: selectedPeriod === 'AM' ? '800' : '600',
+                          },
+                        ]}>
+                        AM
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={[
+                        styles.ampmBtn,
+                        selectedPeriod === 'PM' && { backgroundColor: theme.primary },
+                      ]}
+                      onPress={() => setSelectedPeriod('PM')}>
+                      <Text
+                        style={[
+                          styles.ampmText,
+                          {
+                            color: selectedPeriod === 'PM' ? '#003824' : theme.textSecondary,
+                            fontWeight: selectedPeriod === 'PM' ? '800' : '600',
+                          },
+                        ]}>
+                        PM
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
               </View>
 
-              {/* Frequency / Recurring */}
+              {/* Repeat: Once, Every day, Every week */}
               <View style={styles.inputGroup}>
-                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>FREQUENCY</Text>
-                <View style={styles.frequencyRow}>
+                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>REPEAT</Text>
+                <View style={styles.segmentRow}>
                   {[
-                    { id: 'one-time', label: 'One-time' },
-                    { id: 'weekly', label: 'Weekly' },
-                    { id: 'monthly', label: 'Monthly' },
-                    { id: 'yearly', label: 'Yearly' },
-                  ].map((freq) => {
-                    const isSel = frequency === freq.id;
+                    { id: 'once' as const, label: 'Once' },
+                    { id: 'daily' as const, label: 'Every day' },
+                    { id: 'weekly' as const, label: 'Every week' },
+                  ].map((r) => {
+                    const isSel = frequency === r.id;
                     return (
                       <Pressable
-                        key={freq.id}
+                        key={r.id}
                         style={[
-                          styles.freqBtn,
+                          styles.segmentButton,
                           {
                             backgroundColor: isSel ? '#10B981' : isDark ? '#1C1F29' : '#F1F5F9',
                           },
                         ]}
-                        onPress={() => setFrequency(freq.id as any)}>
+                        onPress={() => setFrequency(r.id)}>
                         <Text
                           style={[
-                            styles.freqBtnText,
+                            styles.segmentButtonText,
                             { color: isSel ? '#003824' : theme.text, fontWeight: isSel ? '700' : '500' },
                           ]}>
-                          {freq.label}
+                          {r.label}
                         </Text>
                       </Pressable>
                     );
                   })}
+                </View>
+              </View>
+
+              {/* Optional Amount */}
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>AMOUNT (OPTIONAL)</Text>
+                <View style={[styles.currencyInputBox, { backgroundColor: isDark ? '#1C1F29' : '#F8FAFC' }]}>
+                  <Text style={[styles.currencySymbol, { color: theme.text }]}>{currency.symbol}</Text>
+                  <TextInput
+                    style={[styles.amountTextInput, { color: theme.text }]}
+                    placeholder="0.00"
+                    placeholderTextColor={theme.textMuted}
+                    keyboardType="decimal-pad"
+                    value={amount}
+                    onChangeText={setAmount}
+                  />
                 </View>
               </View>
 
@@ -777,38 +1042,7 @@ export default function RemindersScreen() {
                 </ScrollView>
               </View>
 
-              {/* Account / Wallet */}
-              {wallets.length > 0 && (
-                <View style={styles.inputGroup}>
-                  <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>PAY FROM (ACCOUNT)</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
-                    {wallets.map((w) => {
-                      const isSel = selectedWalletId === w.id;
-                      return (
-                        <Pressable
-                          key={w.id}
-                          style={[
-                            styles.walletSelectChip,
-                            {
-                              backgroundColor: isSel ? '#10B981' : isDark ? '#1C1F29' : '#F1F5F9',
-                            },
-                          ]}
-                          onPress={() => setSelectedWalletId(w.id)}>
-                          <Text
-                            style={[
-                              styles.walletSelectText,
-                              { color: isSel ? '#003824' : theme.text, fontWeight: isSel ? '700' : '500' },
-                            ]}>
-                            {w.name}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </ScrollView>
-                </View>
-              )}
-
-              {/* Notes */}
+              {/* Optional Notes */}
               <View style={styles.inputGroup}>
                 <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>NOTES (OPTIONAL)</Text>
                 <TextInput
@@ -820,7 +1054,7 @@ export default function RemindersScreen() {
                       borderColor: theme.border,
                     },
                   ]}
-                  placeholder="e.g. Account number, contract info"
+                  placeholder="e.g. Bring water bottle, contract ID"
                   placeholderTextColor={theme.textMuted}
                   value={notes}
                   onChangeText={setNotes}
@@ -896,7 +1130,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: Spacing.lg,
-    paddingBottom: moderateScale(100),
+    paddingBottom: moderateScale(110),
   },
   summaryCard: {
     borderRadius: Radius.xl,
@@ -928,11 +1162,25 @@ const styles = StyleSheet.create({
     fontSize: fontScale(10),
     fontWeight: '800',
   },
-  summaryAmount: {
-    fontSize: fontScale(28),
+  summaryCountRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: Spacing.xs,
+    marginVertical: Spacing.xs,
+  },
+  summaryCountText: {
+    fontSize: fontScale(30),
     fontWeight: '800',
     letterSpacing: -0.8,
-    marginVertical: Spacing.xs,
+  },
+  summaryCountUnit: {
+    fontSize: fontScale(14),
+    fontWeight: '600',
+  },
+  summaryAmountText: {
+    fontSize: fontScale(14),
+    fontWeight: '700',
+    marginLeft: Spacing.xs,
   },
   summaryStatsRow: {
     flexDirection: 'row',
@@ -1003,13 +1251,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  iconWrapper: {
-    width: moderateScale(38),
-    height: moderateScale(38),
-    borderRadius: Radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
+  tickCircleBtn: {
     marginRight: Spacing.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  uncheckCircle: {
+    width: moderateScale(22),
+    height: moderateScale(22),
+    borderRadius: Radius.full,
+    borderWidth: 2,
   },
   cardDetails: {
     flex: 1,
@@ -1019,12 +1270,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.xs,
     marginBottom: 2,
+    flexWrap: 'wrap',
   },
   reminderTitle: {
     fontSize: fontScale(14),
     fontWeight: '700',
   },
-  recurringPill: {
+  repeatBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
@@ -1032,11 +1284,10 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: Radius.full,
   },
-  recurringPillText: {
+  repeatBadgeText: {
     fontSize: fontScale(9),
     color: '#6366F1',
     fontWeight: '700',
-    textTransform: 'capitalize',
   },
   cardSubRow: {
     flexDirection: 'row',
@@ -1051,7 +1302,7 @@ const styles = StyleSheet.create({
   dateTagText: {
     fontSize: fontScale(11),
   },
-  walletNameText: {
+  categoryTagText: {
     fontSize: fontScale(11),
   },
   cardRight: {
@@ -1059,20 +1310,8 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   amountText: {
-    fontSize: fontScale(15),
+    fontSize: fontScale(14),
     fontWeight: '800',
-  },
-  actionIconsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
-  checkButton: {
-    width: moderateScale(26),
-    height: moderateScale(26),
-    borderRadius: Radius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   deleteBtn: {
     padding: moderateScale(4),
@@ -1081,7 +1320,7 @@ const styles = StyleSheet.create({
     fontSize: fontScale(11),
     fontStyle: 'italic',
     marginTop: Spacing.xs,
-    marginLeft: moderateScale(50),
+    marginLeft: moderateScale(36),
   },
   emptyContainer: {
     borderRadius: Radius.lg,
@@ -1100,6 +1339,61 @@ const styles = StyleSheet.create({
     fontSize: fontScale(13),
     textAlign: 'center',
   },
+  undoToast: {
+    position: 'absolute',
+    bottom: moderateScale(24),
+    left: Spacing.lg,
+    right: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: moderateScale(12),
+    borderRadius: Radius.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    elevation: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  undoToastText: {
+    color: '#FFFFFF',
+    fontSize: fontScale(13),
+    fontWeight: '600',
+  },
+  undoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: moderateScale(4),
+  },
+  undoBtnText: {
+    color: '#10B981',
+    fontSize: fontScale(12),
+    fontWeight: '800',
+  },
+  feedbackToast: {
+    position: 'absolute',
+    bottom: moderateScale(24),
+    alignSelf: 'center',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: moderateScale(10),
+    borderRadius: Radius.full,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    elevation: 6,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+  },
+  feedbackToastText: {
+    color: '#FFFFFF',
+    fontSize: fontScale(12),
+    fontWeight: '700',
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
@@ -1109,7 +1403,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: Radius.xxl,
     borderTopRightRadius: Radius.xxl,
     padding: Spacing.xl,
-    maxHeight: '90%',
+    maxHeight: '92%',
   },
   sheetHandle: {
     width: moderateScale(40),
@@ -1149,6 +1443,25 @@ const styles = StyleSheet.create({
     letterSpacing: 1.1,
     marginBottom: Spacing.xs,
   },
+  chipScroll: {
+    flexDirection: 'row',
+  },
+  quickSuggestionChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: moderateScale(7),
+    borderRadius: Radius.full,
+    marginRight: Spacing.sm,
+    borderWidth: 1.5,
+  },
+  quickSuggestionEmoji: {
+    fontSize: fontScale(14),
+  },
+  quickSuggestionText: {
+    fontSize: fontScale(12),
+  },
   textInput: {
     borderRadius: Radius.lg,
     paddingHorizontal: Spacing.md,
@@ -1156,65 +1469,99 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     fontSize: fontScale(14),
   },
-  currencyInputBox: {
+  segmentRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: Radius.lg,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
+    gap: Spacing.xs,
   },
-  currencySymbol: {
-    fontSize: fontScale(20),
-    fontWeight: '700',
-    marginRight: Spacing.sm,
-  },
-  amountTextInput: {
-    flex: 1,
-    fontSize: fontScale(22),
-    fontWeight: '800',
-    paddingVertical: moderateScale(4),
-  },
-  quickChipsRow: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    marginBottom: Spacing.md,
-  },
-  quickChip: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: moderateScale(6),
-    borderRadius: Radius.md,
-  },
-  quickChipText: {
-    fontSize: fontScale(12),
-    fontWeight: '600',
-  },
-  chipScroll: {
-    flexDirection: 'row',
-  },
-  presetChip: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: moderateScale(7),
-    borderRadius: Radius.full,
-    marginRight: Spacing.sm,
-  },
-  presetChipText: {
-    fontSize: fontScale(12),
-  },
-  frequencyRow: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-  },
-  freqBtn: {
+  segmentButton: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: moderateScale(8),
     borderRadius: Radius.md,
   },
-  freqBtnText: {
+  segmentButtonText: {
     fontSize: fontScale(12),
+  },
+  timePresetChip: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: moderateScale(6),
+    borderRadius: Radius.sm,
+  },
+  timePresetChipText: {
+    fontSize: fontScale(10),
+  },
+  timePickerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    borderWidth: 1,
+    gap: Spacing.md,
+  },
+  timeComponent: {
+    alignItems: 'center',
+  },
+  timeLabel: {
+    fontSize: fontScale(9),
+    fontWeight: '700',
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  timeValueControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  timeArrowBtn: {
+    padding: moderateScale(4),
+  },
+  timeValText: {
+    fontSize: fontScale(20),
+    fontWeight: '800',
+    minWidth: moderateScale(30),
+    textAlign: 'center',
+  },
+  timeColon: {
+    fontSize: fontScale(22),
+    fontWeight: '800',
+    paddingTop: moderateScale(14),
+  },
+  ampmToggleWrap: {
+    flexDirection: 'row',
+    borderRadius: Radius.md,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#374151',
+    marginLeft: Spacing.xs,
+  },
+  ampmBtn: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: moderateScale(6),
+  },
+  ampmText: {
+    fontSize: fontScale(11),
+  },
+  currencyInputBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: Radius.lg,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.xs,
+  },
+  currencySymbol: {
+    fontSize: fontScale(18),
+    fontWeight: '700',
+    marginRight: Spacing.sm,
+  },
+  amountTextInput: {
+    flex: 1,
+    fontSize: fontScale(18),
+    fontWeight: '700',
+    paddingVertical: moderateScale(6),
   },
   categorySelectChip: {
     flexDirection: 'row',
@@ -1227,15 +1574,6 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
   },
   categorySelectText: {
-    fontSize: fontScale(12),
-  },
-  walletSelectChip: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: moderateScale(7),
-    borderRadius: Radius.full,
-    marginRight: Spacing.sm,
-  },
-  walletSelectText: {
     fontSize: fontScale(12),
   },
   saveReminderBtn: {

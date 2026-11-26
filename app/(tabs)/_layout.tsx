@@ -1,10 +1,13 @@
-import { router, Tabs } from 'expo-router';
+import { router, Tabs, usePathname } from 'expo-router';
+import { useSQLiteContext } from 'expo-sqlite';
 import { Bell, ChartLineUp, Plus, SquaresFour, UserGear } from 'phosphor-react-native';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Platform, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors } from '@/constants/colors';
+import { getDueSoonRemindersCount } from '@/db/queries';
+import { setDueSoonCount, useDueSoonCount } from '@/utils/settings';
 import { moderateScale, Radius } from '@/utils/styling';
 
 export default function TabLayout() {
@@ -12,6 +15,36 @@ export default function TabLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const theme = isDark ? Colors.dark : Colors.light;
+  const db = useSQLiteContext();
+  const pathname = usePathname();
+  const dueSoonCount = useDueSoonCount();
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const count = await getDueSoonRemindersCount(db);
+        if (mounted) {
+          setDueSoonCount(count);
+        }
+      } catch (e) {
+        console.warn('Failed to load due-soon reminders count:', e);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [db]);
+
+  const isRemindersTab = pathname?.includes('reminders');
+
+  const handleCenterAction = () => {
+    if (isRemindersTab) {
+      router.push({ pathname: '/(tabs)/reminders', params: { openAdd: Date.now().toString() } } as any);
+    } else {
+      router.push('/(modals)/add-transaction');
+    }
+  };
 
   const tabBarHeight = (Platform.OS === 'ios' ? moderateScale(56) : moderateScale(58)) + insets.bottom;
   const tabBarPaddingBottom = Math.max(insets.bottom, Platform.OS === 'ios' ? moderateScale(20) : moderateScale(6));
@@ -81,7 +114,7 @@ export default function TabLayout() {
                   },
                 ]}
                 hitSlop={moderateScale(8)}
-                onPress={() => router.push('/(modals)/add-transaction')}>
+                onPress={handleCenterAction}>
                 <Plus size={moderateScale(26)} color="#003824" weight="bold" />
               </Pressable>
             </View>
@@ -90,7 +123,7 @@ export default function TabLayout() {
         listeners={() => ({
           tabPress: (e) => {
             e.preventDefault();
-            router.push('/(modals)/add-transaction');
+            handleCenterAction();
           },
         })}
       />
@@ -98,6 +131,13 @@ export default function TabLayout() {
         name="reminders"
         options={{
           title: 'Reminders',
+          tabBarBadge: dueSoonCount > 0 ? dueSoonCount : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: '#F43F5E',
+            color: '#FFFFFF',
+            fontSize: moderateScale(10),
+            fontWeight: '700',
+          },
           tabBarIcon: ({ focused }) => (
             <Bell
               size={moderateScale(24)}

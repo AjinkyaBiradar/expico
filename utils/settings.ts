@@ -125,6 +125,32 @@ export async function setLastInsightsSegmentAsync(segment: InsightsSegment): Pro
   notifyListeners();
 }
 
+let dueSoonRemindersCount = 0;
+const dueSoonListeners = new Set<() => void>();
+
+export function getDueSoonCount(): number {
+  return dueSoonRemindersCount;
+}
+
+export function setDueSoonCount(count: number): void {
+  dueSoonRemindersCount = count;
+  dueSoonListeners.forEach((listener) => listener());
+}
+
+export function useDueSoonCount(): number {
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const listener = () => setTick((prev) => prev + 1);
+    dueSoonListeners.add(listener);
+    return () => {
+      dueSoonListeners.delete(listener);
+    };
+  }, []);
+
+  return dueSoonRemindersCount;
+}
+
 /**
  * React hook to access and subscribe to settings.
  */
@@ -144,8 +170,10 @@ export function useSettings() {
     currencies: CURRENCIES,
     themePreference: getThemePreference(),
     lastInsightsSegment: getLastInsightsSegment(),
+    dueSoonCount: dueSoonRemindersCount,
     setCurrency: setActiveCurrencyAsync,
     setThemePreference: setThemePreferenceAsync,
     setLastInsightsSegment: setLastInsightsSegmentAsync,
+    setDueSoonCount,
   };
 }

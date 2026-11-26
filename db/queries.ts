@@ -370,7 +370,7 @@ export interface Reminder {
   wallet_id?: string | null;
   wallet_name?: string | null;
   wallet_icon?: string | null;
-  frequency: 'one-time' | 'weekly' | 'monthly' | 'yearly';
+  frequency: 'once' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'one-time';
   is_paid: number;
   paid_date?: number | null;
   notes?: string | null;
@@ -386,16 +386,26 @@ export async function getReminders(db: SQLiteDatabase): Promise<Reminder[]> {
   );
 }
 
+export async function getDueSoonRemindersCount(db: SQLiteDatabase): Promise<number> {
+  const now = new Date();
+  const endOfTomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 23, 59, 59, 999).getTime();
+  const res = await db.getFirstAsync<{ count: number }>(
+    'SELECT COUNT(*) as count FROM reminders WHERE is_paid = 0 AND due_date <= ?',
+    [endOfTomorrow]
+  );
+  return res?.count ?? 0;
+}
+
 export async function createReminder(
   db: SQLiteDatabase,
   reminder: {
     id: string;
     title: string;
-    amount: number;
+    amount?: number;
     due_date: number;
     category: string;
     wallet_id?: string | null;
-    frequency?: 'one-time' | 'weekly' | 'monthly' | 'yearly';
+    frequency?: 'once' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'one-time';
     notes?: string | null;
   }
 ): Promise<void> {
@@ -406,11 +416,11 @@ export async function createReminder(
     [
       reminder.id,
       reminder.title,
-      reminder.amount,
+      reminder.amount ?? 0,
       reminder.due_date,
       reminder.category,
       reminder.wallet_id ?? null,
-      reminder.frequency ?? 'one-time',
+      reminder.frequency ?? 'once',
       reminder.notes ?? null,
       createdAt,
     ]
@@ -452,10 +462,18 @@ export async function markReminderPaid(
       ]);
     }
 
-    if (reminder.frequency && reminder.frequency !== 'one-time') {
+    if (reminder.frequency && reminder.frequency !== 'once' && reminder.frequency !== 'one-time') {
       const nextDue = new Date(reminder.due_date);
-      if (reminder.frequency === 'weekly') {
+      if (reminder.frequency === 'daily') {
+        nextDue.setDate(nextDue.getDate() + 1);
+        while (nextDue.getTime() <= now) {
+          nextDue.setDate(nextDue.getDate() + 1);
+        }
+      } else if (reminder.frequency === 'weekly') {
         nextDue.setDate(nextDue.getDate() + 7);
+        while (nextDue.getTime() <= now) {
+          nextDue.setDate(nextDue.getDate() + 7);
+        }
       } else if (reminder.frequency === 'monthly') {
         nextDue.setMonth(nextDue.getMonth() + 1);
       } else if (reminder.frequency === 'yearly') {
