@@ -19,14 +19,12 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  useColorScheme,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { CategoryIcon } from '@/components/CategoryIcon';
 import { getCategoryById, registerCategories } from '@/constants/categories';
-import { Colors } from '@/constants/colors';
 import {
   deleteTransaction,
   getBalanceSummary,
@@ -35,19 +33,18 @@ import {
   TransactionWithWallet,
 } from '@/db/queries';
 import {
-  formatCurrency as safeFormatCurrency,
   formatDisplayDate,
   formatDisplayTime,
+  formatCurrency as safeFormatCurrency,
   formatStatCurrency as safeFormatStatCurrency,
 } from '@/utils/formatters';
 import { fontScale, moderateScale, Radius, Spacing } from '@/utils/styling';
+import { useAppTheme } from '@/utils/settings';
 
 export default function HomeScreen() {
   const router = useRouter();
   const db = useSQLiteContext();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const theme = isDark ? Colors.dark : Colors.light;
+  const { isDark, theme } = useAppTheme();
 
   // Real-time state
   const [transactions, setTransactions] = useState<TransactionWithWallet[]>([]);

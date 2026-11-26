@@ -1,13 +1,10 @@
 import { Stack } from 'expo-router';
 import React from 'react';
-import { useColorScheme } from 'react-native';
 
-import { Colors } from '@/constants/colors';
+import { useAppTheme } from '@/utils/settings';
 
 export default function ModalsLayout() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const theme = isDark ? Colors.dark : Colors.light;
+  const { isDark, theme } = useAppTheme();
 
   return (
     <Stack

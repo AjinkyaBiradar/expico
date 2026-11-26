@@ -25,7 +25,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  useColorScheme,
   useWindowDimensions,
   View,
 } from 'react-native';
@@ -35,7 +34,6 @@ import Svg, { Circle, G } from 'react-native-svg';
 import { CategoryIcon } from '@/components/CategoryIcon';
 import { WalletsView } from '@/components/WalletsView';
 import { getCategoryById, registerCategories } from '@/constants/categories';
-import { Colors } from '@/constants/colors';
 import {
   CategorySummary,
   deleteTransaction,
@@ -79,12 +77,8 @@ const MONTH_NAMES = [
 
 export default function AnalyticsScreen() {
   const db = useSQLiteContext();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const theme = isDark ? Colors.dark : Colors.light;
-
   const { width: screenWidth } = useWindowDimensions();
-  const { lastInsightsSegment, setLastInsightsSegment } = useSettings();
+  const { isDark, theme, lastInsightsSegment, setLastInsightsSegment } = useSettings();
   const [activeSegment, setActiveSegment] = useState<InsightsSegment>(lastInsightsSegment || 'analysis');
   const horizontalScrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
 
@@ -428,510 +422,510 @@ export default function AnalyticsScreen() {
               <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.primary} />
             }>
             {/* 3. PERIOD SELECTOR & CLEAN SEGMENTED CONTROL */}
-        <View style={[styles.periodNavContainer, { backgroundColor: isDark ? '#181B25' : '#FFFFFF', borderColor: theme.border }]}>
-          <Pressable
-            style={[styles.periodNavBtn, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}
-            onPress={handlePrevMonth}>
-            <CaretLeft size={moderateScale(16)} color={theme.text} weight="bold" />
-          </Pressable>
-
-          <View style={styles.periodCenter}>
-            <CalendarBlank size={moderateScale(18)} color="#10B981" weight="bold" />
-            <Text style={[styles.periodMonthText, { color: theme.text }]}>
-              {MONTH_NAMES[currentMonth]} {currentYear}
-            </Text>
-            <CaretDown size={moderateScale(14)} color={theme.textSecondary} weight="bold" />
-          </View>
-
-          <Pressable
-            style={[styles.periodNavBtn, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}
-            onPress={handleNextMonth}>
-            <CaretRight size={moderateScale(16)} color={theme.text} weight="bold" />
-          </Pressable>
-        </View>
-
-        {/* Clean Segmented Control replacing loose horizontal pills */}
-        <View
-          style={[
-            styles.segmentedControlWrap,
-            { backgroundColor: isDark ? '#181B25' : '#F1F5F9', borderColor: theme.border },
-          ]}>
-          {[
-            { id: 'thisMonth', label: 'This Month' },
-            { id: 'lastMonth', label: 'Last Month' },
-            { id: 'q3', label: 'Q3 Recap' },
-            { id: 'custom', label: 'Custom' },
-          ].map((item) => {
-            const active = horizon === item.id;
-            return (
+            <View style={[styles.periodNavContainer, { backgroundColor: isDark ? '#181B25' : '#FFFFFF', borderColor: theme.border }]}>
               <Pressable
-                key={item.id}
-                style={[
-                  styles.segmentBtn,
-                  active && [
-                    styles.segmentBtnActive,
-                    { backgroundColor: isDark ? '#262A34' : '#FFFFFF' },
-                  ],
-                ]}
-                onPress={() => handleSelectHorizon(item.id as HorizonPeriod)}>
-                <Text
-                  style={[
-                    styles.segmentBtnText,
-                    {
-                      color: active ? (isDark ? '#FFFFFF' : '#0F172A') : theme.textSecondary,
-                      fontWeight: active ? '800' : '600',
-                    },
-                  ]}>
-                  {item.label}
-                </Text>
+                style={[styles.periodNavBtn, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}
+                onPress={handlePrevMonth}>
+                <CaretLeft size={moderateScale(16)} color={theme.text} weight="bold" />
               </Pressable>
-            );
-          })}
-        </View>
 
-        {/* 3. BUDGET HEALTH CARD WITH ACCURATE OVER-BUDGET WARNING STATE */}
-        <View
-          style={[
-            styles.budgetHealthCard,
-            {
-              backgroundColor: isDark ? '#181B25' : '#FFFFFF',
-              borderColor: isOverBudget ? 'rgba(244, 63, 94, 0.45)' : theme.border,
-            },
-          ]}>
-          <View
-            style={[
-              styles.healthBannerGlow,
-              { backgroundColor: isOverBudget ? 'rgba(244, 63, 94, 0.12)' : 'rgba(16, 185, 129, 0.1)' },
-            ]}
-          />
+              <View style={styles.periodCenter}>
+                <CalendarBlank size={moderateScale(18)} color="#10B981" weight="bold" />
+                <Text style={[styles.periodMonthText, { color: theme.text }]}>
+                  {MONTH_NAMES[currentMonth]} {currentYear}
+                </Text>
+                <CaretDown size={moderateScale(14)} color={theme.textSecondary} weight="bold" />
+              </View>
 
-          <View style={styles.healthHeaderRow}>
-            <View style={styles.healthTitleRow}>
+              <Pressable
+                style={[styles.periodNavBtn, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}
+                onPress={handleNextMonth}>
+                <CaretRight size={moderateScale(16)} color={theme.text} weight="bold" />
+              </Pressable>
+            </View>
+
+            {/* Clean Segmented Control replacing loose horizontal pills */}
+            <View
+              style={[
+                styles.segmentedControlWrap,
+                { backgroundColor: isDark ? '#181B25' : '#F1F5F9', borderColor: theme.border },
+              ]}>
+              {[
+                { id: 'thisMonth', label: 'This Month' },
+                { id: 'lastMonth', label: 'Last Month' },
+                { id: 'q3', label: 'Q3 Recap' },
+                { id: 'custom', label: 'Custom' },
+              ].map((item) => {
+                const active = horizon === item.id;
+                return (
+                  <Pressable
+                    key={item.id}
+                    style={[
+                      styles.segmentBtn,
+                      active && [
+                        styles.segmentBtnActive,
+                        { backgroundColor: isDark ? '#262A34' : '#FFFFFF' },
+                      ],
+                    ]}
+                    onPress={() => handleSelectHorizon(item.id as HorizonPeriod)}>
+                    <Text
+                      style={[
+                        styles.segmentBtnText,
+                        {
+                          color: active ? (isDark ? '#FFFFFF' : '#0F172A') : theme.textSecondary,
+                          fontWeight: active ? '800' : '600',
+                        },
+                      ]}>
+                      {item.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {/* 3. BUDGET HEALTH CARD WITH ACCURATE OVER-BUDGET WARNING STATE */}
+            <View
+              style={[
+                styles.budgetHealthCard,
+                {
+                  backgroundColor: isDark ? '#181B25' : '#FFFFFF',
+                  borderColor: isOverBudget ? 'rgba(244, 63, 94, 0.45)' : theme.border,
+                },
+              ]}>
               <View
                 style={[
-                  styles.pulseDot,
-                  { backgroundColor: isOverBudget ? '#F43F5E' : '#10B981' },
+                  styles.healthBannerGlow,
+                  { backgroundColor: isOverBudget ? 'rgba(244, 63, 94, 0.12)' : 'rgba(16, 185, 129, 0.1)' },
                 ]}
               />
-              <Text
-                style={[
-                  styles.healthStatusLabel,
-                  { color: isOverBudget ? '#F43F5E' : '#10B981' },
-                ]}>
-                BUDGET HEALTH
-              </Text>
-            </View>
 
-            {/* Status Badge */}
-            <View
-              style={[
-                styles.statusBadge,
-                {
-                  backgroundColor: isOverBudget
-                    ? 'rgba(244, 63, 94, 0.18)'
-                    : budgetRatio >= 85
-                    ? 'rgba(245, 158, 11, 0.18)'
-                    : isDark
-                    ? '#31353F'
-                    : '#D1FAE5',
-                },
-              ]}>
-              {isOverBudget && (
-                <Warning size={moderateScale(12)} color="#F43F5E" weight="fill" style={{ marginRight: 3 }} />
-              )}
-              <Text
-                style={[
-                  styles.statusBadgeText,
-                  {
-                    color: isOverBudget
-                      ? '#F43F5E'
-                      : budgetRatio >= 85
-                      ? '#F59E0B'
-                      : isDark
-                      ? '#4EDEA3'
-                      : '#059669',
-                    fontWeight: '800',
-                  },
-                ]}>
-                {isOverBudget ? 'OVER BUDGET' : budgetRatio >= 85 ? 'NEAR LIMIT' : 'ON TRACK'}
-              </Text>
-            </View>
-          </View>
+              <View style={styles.healthHeaderRow}>
+                <View style={styles.healthTitleRow}>
+                  <View
+                    style={[
+                      styles.pulseDot,
+                      { backgroundColor: isOverBudget ? '#F43F5E' : '#10B981' },
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.healthStatusLabel,
+                      { color: isOverBudget ? '#F43F5E' : '#10B981' },
+                    ]}>
+                    BUDGET HEALTH
+                  </Text>
+                </View>
 
-          {/* Spent vs Target Row */}
-          <View style={styles.spentVsTargetRow}>
-            <View>
-              <Text style={[styles.spentSub, { color: theme.textSecondary }]}>Total Spent</Text>
-              <View style={styles.spentValRow}>
-                <Text style={[styles.spentValText, { color: isOverBudget ? '#F43F5E' : theme.text }]}>
-                  {formatCurrency(totalSpent)}
+                {/* Status Badge */}
+                <View
+                  style={[
+                    styles.statusBadge,
+                    {
+                      backgroundColor: isOverBudget
+                        ? 'rgba(244, 63, 94, 0.18)'
+                        : budgetRatio >= 85
+                          ? 'rgba(245, 158, 11, 0.18)'
+                          : isDark
+                            ? '#31353F'
+                            : '#D1FAE5',
+                    },
+                  ]}>
+                  {isOverBudget && (
+                    <Warning size={moderateScale(12)} color="#F43F5E" weight="fill" style={{ marginRight: 3 }} />
+                  )}
+                  <Text
+                    style={[
+                      styles.statusBadgeText,
+                      {
+                        color: isOverBudget
+                          ? '#F43F5E'
+                          : budgetRatio >= 85
+                            ? '#F59E0B'
+                            : isDark
+                              ? '#4EDEA3'
+                              : '#059669',
+                        fontWeight: '800',
+                      },
+                    ]}>
+                    {isOverBudget ? 'OVER BUDGET' : budgetRatio >= 85 ? 'NEAR LIMIT' : 'ON TRACK'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Spent vs Target Row */}
+              <View style={styles.spentVsTargetRow}>
+                <View>
+                  <Text style={[styles.spentSub, { color: theme.textSecondary }]}>Total Spent</Text>
+                  <View style={styles.spentValRow}>
+                    <Text style={[styles.spentValText, { color: isOverBudget ? '#F43F5E' : theme.text }]}>
+                      {formatCurrency(totalSpent)}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.targetColRight}>
+                  <Text style={[styles.spentSub, { color: theme.textSecondary, textAlign: 'right' }]}>
+                    Target Limit
+                  </Text>
+                  <Text style={[styles.targetValText, { color: theme.text }]}>
+                    {formatCurrency(targetBudget)}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Progress Bar with Color Warning */}
+              <View style={[styles.healthProgressTrack, { backgroundColor: isDark ? '#262A34' : '#E2E8F0' }]}>
+                <View
+                  style={[
+                    styles.healthProgressFill,
+                    {
+                      width: `${Math.min(100, budgetRatio)}%`,
+                      backgroundColor: isOverBudget ? '#F43F5E' : budgetRatio >= 85 ? '#F59E0B' : '#10B981',
+                    },
+                  ]}
+                />
+              </View>
+
+              {/* Health Footer / Overage Detail */}
+              <View style={styles.healthFooterRow}>
+                <Text
+                  style={[
+                    styles.healthFooterText,
+                    { color: isOverBudget ? '#F43F5E' : theme.textSecondary, fontWeight: isOverBudget ? '700' : '500' },
+                  ]}>
+                  {isOverBudget
+                    ? `+${formatCurrency(overageAmount)} over budget (${displayBudgetPercentage}% used)`
+                    : `${formatCurrency(remainingBudget)} remaining (${100 - displayBudgetPercentage}% free)`}
+                </Text>
+                <Text style={[styles.healthCategoriesCount, { color: theme.textMuted }]}>
+                  {envelopes.length} active {envelopes.length === 1 ? 'category' : 'categories'}
                 </Text>
               </View>
+
+              {/* Warning State Banner if Over Budget */}
+              {isOverBudget && (
+                <View style={[styles.overBudgetWarningBanner, { backgroundColor: isDark ? 'rgba(244, 63, 94, 0.12)' : '#FFE4E6' }]}>
+                  <Warning size={moderateScale(16)} color="#F43F5E" weight="bold" />
+                  <Text style={[styles.warningBannerText, { color: '#F43F5E' }]}>
+                    Spending has exceeded your target by {formatCurrency(overageAmount)}. Review allocations below to curb discretionary expenses.
+                  </Text>
+                </View>
+              )}
             </View>
 
-            <View style={styles.targetColRight}>
-              <Text style={[styles.spentSub, { color: theme.textSecondary, textAlign: 'right' }]}>
-                Target Limit
-              </Text>
-              <Text style={[styles.targetValText, { color: theme.text }]}>
-                {formatCurrency(targetBudget)}
-              </Text>
-            </View>
-          </View>
+            {/* 4. ALLOCATION SPLIT INTERACTIVE SVG DONUT CHART (TOP 5 + OTHER) */}
+            <View style={[styles.allocationCard, { backgroundColor: isDark ? '#181B25' : '#FFFFFF', borderColor: theme.border }]}>
+              <View style={styles.allocationHeader}>
+                <View>
+                  <Text style={[styles.sectionTitle, { color: theme.text }]}>Allocation Split</Text>
+                  <Text style={[styles.activitySub, { color: theme.textSecondary }]}>
+                    Top 5 spending categories + Other
+                  </Text>
+                </View>
+                <Pressable
+                  style={[styles.percentToggleBtn, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}
+                  onPress={() => setSelectedLegendCategory(null)}>
+                  <Percent size={moderateScale(16)} color={theme.text} weight="bold" />
+                </Pressable>
+              </View>
 
-          {/* Progress Bar with Color Warning */}
-          <View style={[styles.healthProgressTrack, { backgroundColor: isDark ? '#262A34' : '#E2E8F0' }]}>
-            <View
-              style={[
-                styles.healthProgressFill,
-                {
-                  width: `${Math.min(100, budgetRatio)}%`,
-                  backgroundColor: isOverBudget ? '#F43F5E' : budgetRatio >= 85 ? '#F59E0B' : '#10B981',
-                },
-              ]}
-            />
-          </View>
-
-          {/* Health Footer / Overage Detail */}
-          <View style={styles.healthFooterRow}>
-            <Text
-              style={[
-                styles.healthFooterText,
-                { color: isOverBudget ? '#F43F5E' : theme.textSecondary, fontWeight: isOverBudget ? '700' : '500' },
-              ]}>
-              {isOverBudget
-                ? `+${formatCurrency(overageAmount)} over budget (${displayBudgetPercentage}% used)`
-                : `${formatCurrency(remainingBudget)} remaining (${100 - displayBudgetPercentage}% free)`}
-            </Text>
-            <Text style={[styles.healthCategoriesCount, { color: theme.textMuted }]}>
-              {envelopes.length} active {envelopes.length === 1 ? 'category' : 'categories'}
-            </Text>
-          </View>
-
-          {/* Warning State Banner if Over Budget */}
-          {isOverBudget && (
-            <View style={[styles.overBudgetWarningBanner, { backgroundColor: isDark ? 'rgba(244, 63, 94, 0.12)' : '#FFE4E6' }]}>
-              <Warning size={moderateScale(16)} color="#F43F5E" weight="bold" />
-              <Text style={[styles.warningBannerText, { color: '#F43F5E' }]}>
-                Spending has exceeded your target by {formatCurrency(overageAmount)}. Review allocations below to curb discretionary expenses.
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* 4. ALLOCATION SPLIT INTERACTIVE SVG DONUT CHART (TOP 5 + OTHER) */}
-        <View style={[styles.allocationCard, { backgroundColor: isDark ? '#181B25' : '#FFFFFF', borderColor: theme.border }]}>
-          <View style={styles.allocationHeader}>
-            <View>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>Allocation Split</Text>
-              <Text style={[styles.activitySub, { color: theme.textSecondary }]}>
-                Top 5 spending categories + Other
-              </Text>
-            </View>
-            <Pressable
-              style={[styles.percentToggleBtn, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}
-              onPress={() => setSelectedLegendCategory(null)}>
-              <Percent size={moderateScale(16)} color={theme.text} weight="bold" />
-            </Pressable>
-          </View>
-
-          {/* Center Donut Graphic */}
-          <View style={styles.donutContainer}>
-            <View style={[styles.donutSvgWrap, { width: donutSize, height: donutSize }]}>
-              <Svg width={donutSize} height={donutSize} viewBox={`0 0 ${donutSize} ${donutSize}`}>
-                <G rotation="-90" origin={`${donutSize / 2}, ${donutSize / 2}`}>
-                  {/* Background Track */}
-                  <Circle
-                    cx={donutSize / 2}
-                    cy={donutSize / 2}
-                    r={centerRadius}
-                    stroke={isDark ? '#262A34' : '#E2E8F0'}
-                    strokeWidth={strokeWidth}
-                    fill="none"
-                  />
-                  {/* Category Slices (Top 5 + Other) */}
-                  {donutSlices.map((slice, idx) => {
-                    const strokeDash = Math.max(1, slice.dashLength - 3);
-                    const strokeGap = circumference - strokeDash;
-                    const isSelected = selectedLegendCategory === slice.id;
-
-                    return (
+              {/* Center Donut Graphic */}
+              <View style={styles.donutContainer}>
+                <View style={[styles.donutSvgWrap, { width: donutSize, height: donutSize }]}>
+                  <Svg width={donutSize} height={donutSize} viewBox={`0 0 ${donutSize} ${donutSize}`}>
+                    <G rotation="-90" origin={`${donutSize / 2}, ${donutSize / 2}`}>
+                      {/* Background Track */}
                       <Circle
-                        key={`slice-${idx}`}
                         cx={donutSize / 2}
                         cy={donutSize / 2}
                         r={centerRadius}
-                        stroke={slice.color}
-                        strokeWidth={isSelected ? strokeWidth + 4 : strokeWidth}
-                        strokeDasharray={[strokeDash, strokeGap]}
-                        strokeDashoffset={-slice.offset}
+                        stroke={isDark ? '#262A34' : '#E2E8F0'}
+                        strokeWidth={strokeWidth}
                         fill="none"
-                        strokeLinecap="round"
-                        opacity={selectedLegendCategory && !isSelected ? 0.35 : 1}
                       />
-                    );
-                  })}
-                </G>
-              </Svg>
+                      {/* Category Slices (Top 5 + Other) */}
+                      {donutSlices.map((slice, idx) => {
+                        const strokeDash = Math.max(1, slice.dashLength - 3);
+                        const strokeGap = circumference - strokeDash;
+                        const isSelected = selectedLegendCategory === slice.id;
 
-              {/* Donut Center Hole Card */}
-              <View
-                style={[
-                  styles.donutCenterCard,
-                  {
-                    width: centerRadius * 1.35,
-                    height: centerRadius * 1.35,
-                    borderRadius: (centerRadius * 1.35) / 2,
-                    backgroundColor: isDark ? '#181B25' : '#FFFFFF',
-                  },
-                ]}>
-                <Text style={[styles.centerSubLabel, { color: theme.textSecondary }]}>SPENT TOTAL</Text>
-                <Text style={[styles.centerAmountText, { color: isOverBudget ? '#F43F5E' : theme.text }]}>
-                  {formatCurrency(totalSpent)}
-                </Text>
-                <Text style={[styles.centerCategoryCount, { color: theme.textMuted }]}>
-                  {envelopes.length} Total Categories
-                </Text>
-              </View>
-            </View>
-          </View>
+                        return (
+                          <Circle
+                            key={`slice-${idx}`}
+                            cx={donutSize / 2}
+                            cy={donutSize / 2}
+                            r={centerRadius}
+                            stroke={slice.color}
+                            strokeWidth={isSelected ? strokeWidth + 4 : strokeWidth}
+                            strokeDasharray={[strokeDash, strokeGap]}
+                            strokeDashoffset={-slice.offset}
+                            fill="none"
+                            strokeLinecap="round"
+                            opacity={selectedLegendCategory && !isSelected ? 0.35 : 1}
+                          />
+                        );
+                      })}
+                    </G>
+                  </Svg>
 
-          {/* Interactive Legend Grid (Top 5 + Other) */}
-          <View style={styles.legendGrid}>
-            {donutCategories.map((item) => {
-              const isSelected = selectedLegendCategory === item.id;
-              const slice = donutSlices.find((s) => s.id === item.id);
-              const isOther = item.id === 'other_grouped';
-
-              return (
-                <Pressable
-                  key={`legend-${item.id}`}
-                  style={[
-                    styles.legendCard,
-                    { backgroundColor: isDark ? '#1C1F29' : '#F8FAFC' },
-                    isSelected && { borderColor: item.color, borderWidth: 1.5 },
-                  ]}
-                  onPress={() => {
-                    if (isOther) {
-                      setIsOtherExpanded((prev) => !prev);
-                      setSelectedLegendCategory((curr) => (curr === item.id ? null : item.id));
-                    } else {
-                      setSelectedLegendCategory((curr) => (curr === item.id ? null : item.id));
-                    }
-                  }}>
-                  <View style={styles.legendLeft}>
-                    <View style={[styles.legendColorDot, { backgroundColor: item.color }]} />
-                    <View style={styles.legendTextWrap}>
-                      <Text style={[styles.legendName, { color: theme.text }]} numberOfLines={1}>
-                        {item.name}
-                      </Text>
-                      {isOther && (
-                        <Text style={[styles.tapToExpandText, { color: theme.primary }]}>
-                          {isOtherExpanded ? 'Tap to close' : 'Tap to expand'}
-                        </Text>
-                      )}
-                    </View>
-                  </View>
-                  <View style={styles.legendRight}>
-                    <Text style={[styles.legendPercent, { color: theme.text }]}>
-                      {slice?.percentage ?? 0}%
+                  {/* Donut Center Hole Card */}
+                  <View
+                    style={[
+                      styles.donutCenterCard,
+                      {
+                        width: centerRadius * 1.35,
+                        height: centerRadius * 1.35,
+                        borderRadius: (centerRadius * 1.35) / 2,
+                        backgroundColor: isDark ? '#181B25' : '#FFFFFF',
+                      },
+                    ]}>
+                    <Text style={[styles.centerSubLabel, { color: theme.textSecondary }]}>SPENT TOTAL</Text>
+                    <Text style={[styles.centerAmountText, { color: isOverBudget ? '#F43F5E' : theme.text }]}>
+                      {formatCurrency(totalSpent)}
                     </Text>
-                    {isOther && (
-                      isOtherExpanded ? (
-                        <CaretUp size={moderateScale(12)} color={theme.primary} weight="bold" />
-                      ) : (
-                        <CaretDown size={moderateScale(12)} color={theme.primary} weight="bold" />
-                      )
-                    )}
+                    <Text style={[styles.centerCategoryCount, { color: theme.textMuted }]}>
+                      {envelopes.length} Total Categories
+                    </Text>
                   </View>
-                </Pressable>
-              );
-            })}
-          </View>
+                </View>
+              </View>
 
-          {/* Expanded Other Breakdown (When user taps "Other" to expand) */}
-          {isOtherExpanded && otherCategories.length > 0 && (
-            <View
-              style={[
-                styles.otherBreakdownCard,
-                { backgroundColor: isDark ? '#141720' : '#F1F5F9', borderColor: theme.border },
-              ]}>
-              <View style={styles.otherBreakdownHeader}>
-                <View style={styles.otherHeaderTitleRow}>
-                  <Text style={[styles.otherBreakdownTitle, { color: theme.text }]}>
-                    Other Categories Breakdown ({otherCategories.length})
+              {/* Interactive Legend Grid (Top 5 + Other) */}
+              <View style={styles.legendGrid}>
+                {donutCategories.map((item) => {
+                  const isSelected = selectedLegendCategory === item.id;
+                  const slice = donutSlices.find((s) => s.id === item.id);
+                  const isOther = item.id === 'other_grouped';
+
+                  return (
+                    <Pressable
+                      key={`legend-${item.id}`}
+                      style={[
+                        styles.legendCard,
+                        { backgroundColor: isDark ? '#1C1F29' : '#F8FAFC' },
+                        isSelected && { borderColor: item.color, borderWidth: 1.5 },
+                      ]}
+                      onPress={() => {
+                        if (isOther) {
+                          setIsOtherExpanded((prev) => !prev);
+                          setSelectedLegendCategory((curr) => (curr === item.id ? null : item.id));
+                        } else {
+                          setSelectedLegendCategory((curr) => (curr === item.id ? null : item.id));
+                        }
+                      }}>
+                      <View style={styles.legendLeft}>
+                        <View style={[styles.legendColorDot, { backgroundColor: item.color }]} />
+                        <View style={styles.legendTextWrap}>
+                          <Text style={[styles.legendName, { color: theme.text }]} numberOfLines={1}>
+                            {item.name}
+                          </Text>
+                          {isOther && (
+                            <Text style={[styles.tapToExpandText, { color: theme.primary }]}>
+                              {isOtherExpanded ? 'Tap to close' : 'Tap to expand'}
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                      <View style={styles.legendRight}>
+                        <Text style={[styles.legendPercent, { color: theme.text }]}>
+                          {slice?.percentage ?? 0}%
+                        </Text>
+                        {isOther && (
+                          isOtherExpanded ? (
+                            <CaretUp size={moderateScale(12)} color={theme.primary} weight="bold" />
+                          ) : (
+                            <CaretDown size={moderateScale(12)} color={theme.primary} weight="bold" />
+                          )
+                        )}
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              {/* Expanded Other Breakdown (When user taps "Other" to expand) */}
+              {isOtherExpanded && otherCategories.length > 0 && (
+                <View
+                  style={[
+                    styles.otherBreakdownCard,
+                    { backgroundColor: isDark ? '#141720' : '#F1F5F9', borderColor: theme.border },
+                  ]}>
+                  <View style={styles.otherBreakdownHeader}>
+                    <View style={styles.otherHeaderTitleRow}>
+                      <Text style={[styles.otherBreakdownTitle, { color: theme.text }]}>
+                        Other Categories Breakdown ({otherCategories.length})
+                      </Text>
+                    </View>
+                    <Pressable hitSlop={8} onPress={() => setIsOtherExpanded(false)}>
+                      <Text style={[styles.collapseLinkText, { color: theme.primary }]}>Collapse ✕</Text>
+                    </Pressable>
+                  </View>
+
+                  <View style={styles.otherCategoriesList}>
+                    {otherCategories.map((otherItem) => (
+                      <View
+                        key={`other-item-${otherItem.id}`}
+                        style={[
+                          styles.otherCategoryRow,
+                          { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF', borderColor: theme.border },
+                        ]}>
+                        <View style={styles.otherRowLeft}>
+                          <View style={[styles.otherIconSquircle, { backgroundColor: `${otherItem.color}25` }]}>
+                            <CategoryIcon name={otherItem.icon} size={moderateScale(16)} color={otherItem.color} />
+                          </View>
+                          <View>
+                            <Text style={[styles.otherCatName, { color: theme.text }]}>{otherItem.name}</Text>
+                            <Text style={[styles.otherCatCount, { color: theme.textMuted }]}>
+                              {otherItem.txCount} txs
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={styles.otherRowRight}>
+                          <Text style={[styles.otherCatSpent, { color: theme.text }]}>
+                            {formatCurrency(otherItem.spent)}
+                          </Text>
+                          <Text style={[styles.otherCatPct, { color: otherItem.color }]}>
+                            {otherItem.percentage}%
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+            </View>
+
+            {/* 5. ALL CATEGORY ALLOCATIONS LISTING */}
+            <View style={styles.envelopesSection}>
+              <View style={styles.envelopesHeader}>
+                <View>
+                  <Text style={[styles.sectionTitle, { color: theme.text }]}>Category Allocations</Text>
+                  <Text style={[styles.activitySub, { color: theme.textSecondary }]}>
+                    {envelopes.length} active spending {envelopes.length === 1 ? 'category' : 'categories'}
                   </Text>
                 </View>
-                <Pressable hitSlop={8} onPress={() => setIsOtherExpanded(false)}>
-                  <Text style={[styles.collapseLinkText, { color: theme.primary }]}>Collapse ✕</Text>
+                <Pressable
+                  style={styles.addPoolBtn}
+                  onPress={() => router.push('/(modals)/add-transaction')}>
+                  <PlusCircle size={moderateScale(18)} color="#10B981" weight="fill" />
+                  <Text style={[styles.addPoolText, { color: '#10B981' }]}>Add Category</Text>
                 </Pressable>
               </View>
 
-              <View style={styles.otherCategoriesList}>
-                {otherCategories.map((otherItem) => (
-                  <View
-                    key={`other-item-${otherItem.id}`}
-                    style={[
-                      styles.otherCategoryRow,
-                      { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF', borderColor: theme.border },
-                    ]}>
-                    <View style={styles.otherRowLeft}>
-                      <View style={[styles.otherIconSquircle, { backgroundColor: `${otherItem.color}25` }]}>
-                        <CategoryIcon name={otherItem.icon} size={moderateScale(16)} color={otherItem.color} />
-                      </View>
-                      <View>
-                        <Text style={[styles.otherCatName, { color: theme.text }]}>{otherItem.name}</Text>
-                        <Text style={[styles.otherCatCount, { color: theme.textMuted }]}>
-                          {otherItem.txCount} txs
-                        </Text>
-                      </View>
-                    </View>
-                    <View style={styles.otherRowRight}>
-                      <Text style={[styles.otherCatSpent, { color: theme.text }]}>
-                        {formatCurrency(otherItem.spent)}
-                      </Text>
-                      <Text style={[styles.otherCatPct, { color: otherItem.color }]}>
-                        {otherItem.percentage}%
-                      </Text>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            </View>
-          )}
-        </View>
+              {envelopes.length === 0 ? (
+                <View style={[styles.emptyContainer, { backgroundColor: isDark ? '#181B25' : '#FFFFFF' }]}>
+                  <Text style={[styles.emptyTitle, { color: theme.text }]}>No Category Spending</Text>
+                  <Text style={[styles.emptySubtitle, { color: theme.textMuted }]}>
+                    All category balances are currently {formatCurrency(0)}. Log an expense to track your spending allocations.
+                  </Text>
+                </View>
+              ) : (
+                envelopes.map((item) => {
+                  const isExpanded = expandedCategoryId === item.id;
 
-        {/* 5. ALL CATEGORY ALLOCATIONS LISTING */}
-        <View style={styles.envelopesSection}>
-          <View style={styles.envelopesHeader}>
-            <View>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>Category Allocations</Text>
-              <Text style={[styles.activitySub, { color: theme.textSecondary }]}>
-                {envelopes.length} active spending {envelopes.length === 1 ? 'category' : 'categories'}
-              </Text>
-            </View>
-            <Pressable
-              style={styles.addPoolBtn}
-              onPress={() => router.push('/(modals)/add-transaction')}>
-              <PlusCircle size={moderateScale(18)} color="#10B981" weight="fill" />
-              <Text style={[styles.addPoolText, { color: '#10B981' }]}>Add Category</Text>
-            </Pressable>
-          </View>
+                  // Filter transactions for this category
+                  const catTxs = transactions.filter(
+                    (tx) => tx.type === 'expense' && tx.category === item.id
+                  );
 
-          {envelopes.length === 0 ? (
-            <View style={[styles.emptyContainer, { backgroundColor: isDark ? '#181B25' : '#FFFFFF' }]}>
-              <Text style={[styles.emptyTitle, { color: theme.text }]}>No Category Spending</Text>
-              <Text style={[styles.emptySubtitle, { color: theme.textMuted }]}>
-                All category balances are currently {formatCurrency(0)}. Log an expense to track your spending allocations.
-              </Text>
-            </View>
-          ) : (
-            envelopes.map((item) => {
-              const isExpanded = expandedCategoryId === item.id;
-
-              // Filter transactions for this category
-              const catTxs = transactions.filter(
-                (tx) => tx.type === 'expense' && tx.category === item.id
-              );
-
-              return (
-                <View
-                  key={item.id}
-                  style={[
-                    styles.envelopeCard,
-                    { backgroundColor: isDark ? '#181B25' : '#FFFFFF', borderColor: theme.border },
-                  ]}>
-                  <Pressable
-                    style={styles.envelopeCardHeader}
-                    onPress={() =>
-                      setExpandedCategoryId((curr) => (curr === item.id ? null : item.id))
-                    }>
-                    <View style={styles.envLeft}>
-                      <View style={[styles.envIconCircle, { backgroundColor: `${item.color}25` }]}>
-                        <CategoryIcon name={item.icon} size={moderateScale(20)} color={item.color} />
-                      </View>
-                      <View>
-                        <Text style={[styles.envName, { color: theme.text }]}>{item.name}</Text>
-                      </View>
-                    </View>
-                    {isExpanded ? (
-                      <CaretUp size={moderateScale(16)} color={theme.textSecondary} />
-                    ) : (
-                      <CaretDown size={moderateScale(16)} color={theme.textSecondary} />
-                    )}
-                  </Pressable>
-
-                  {/* Amount Row */}
-                  <View style={styles.envMetricsRow}>
-                    <Text style={[styles.envSpentText, { color: theme.text }]}>
-                      {formatCurrency(item.spent)}{' '}
-                      <Text style={[styles.envSpentUnit, { color: theme.textMuted }]}>spent</Text>
-                    </Text>
-                    <Text style={[styles.envPercentageText, { color: item.color }]}>
-                      {item.percentage}%
-                    </Text>
-                  </View>
-
-                  {/* Progress Bar */}
-                  <View style={[styles.envProgressTrack, { backgroundColor: isDark ? '#262A34' : '#E2E8F0' }]}>
+                  return (
                     <View
+                      key={item.id}
                       style={[
-                        styles.envProgressFill,
-                        { width: `${Math.min(100, item.percentage)}%`, backgroundColor: item.color },
-                      ]}
-                    />
-                  </View>
-
-                  {/* Card Sub-Footer */}
-                  <View style={styles.envCardFooter}>
-                    <Text style={[styles.envTxCount, { color: theme.textSecondary }]}>
-                      {catTxs.length > 0 ? `${catTxs.length} transactions` : `${item.txCount} transactions`}
-                    </Text>
-                    <Text style={[styles.envNote, { color: theme.textSecondary }]}>{item.note}</Text>
-                  </View>
-
-                  {/* Expanded Transactions for this Category */}
-                  {isExpanded && (
-                    <View style={[styles.expandedTxList, { borderTopColor: theme.border }]}>
-                      {catTxs.length === 0 ? (
-                        <Text style={[styles.noTxText, { color: theme.textMuted }]}>
-                          No transactions found for this category in this cycle.
-                        </Text>
-                      ) : (
-                        catTxs.map((tx) => (
-                          <View key={tx.id} style={styles.txRow}>
-                            <View style={styles.txRowLeft}>
-                              <Text style={[styles.txDesc, { color: theme.text }]}>
-                                {tx.description || item.name}
-                              </Text>
-                              <Text style={[styles.txDate, { color: theme.textMuted }]}>
-                                {new Date(tx.date).toLocaleDateString([], {
-                                  month: 'short',
-                                  day: 'numeric',
-                                })} • {tx.wallet_name || 'Main Wallet'}
-                              </Text>
-                            </View>
-                            <View style={styles.txRowRight}>
-                              <Text style={[styles.txAmount, { color: '#F43F5E' }]}>
-                                -{formatCurrency(tx.amount)}
-                              </Text>
-                              <Pressable
-                                style={styles.txDeleteMiniBtn}
-                                hitSlop={8}
-                                onPress={() => handleDeleteTransaction(tx)}>
-                                <Trash size={moderateScale(13)} color="#F43F5E" />
-                              </Pressable>
-                            </View>
+                        styles.envelopeCard,
+                        { backgroundColor: isDark ? '#181B25' : '#FFFFFF', borderColor: theme.border },
+                      ]}>
+                      <Pressable
+                        style={styles.envelopeCardHeader}
+                        onPress={() =>
+                          setExpandedCategoryId((curr) => (curr === item.id ? null : item.id))
+                        }>
+                        <View style={styles.envLeft}>
+                          <View style={[styles.envIconCircle, { backgroundColor: `${item.color}25` }]}>
+                            <CategoryIcon name={item.icon} size={moderateScale(20)} color={item.color} />
                           </View>
-                        ))
+                          <View>
+                            <Text style={[styles.envName, { color: theme.text }]}>{item.name}</Text>
+                          </View>
+                        </View>
+                        {isExpanded ? (
+                          <CaretUp size={moderateScale(16)} color={theme.textSecondary} />
+                        ) : (
+                          <CaretDown size={moderateScale(16)} color={theme.textSecondary} />
+                        )}
+                      </Pressable>
+
+                      {/* Amount Row */}
+                      <View style={styles.envMetricsRow}>
+                        <Text style={[styles.envSpentText, { color: theme.text }]}>
+                          {formatCurrency(item.spent)}{' '}
+                          <Text style={[styles.envSpentUnit, { color: theme.textMuted }]}>spent</Text>
+                        </Text>
+                        <Text style={[styles.envPercentageText, { color: item.color }]}>
+                          {item.percentage}%
+                        </Text>
+                      </View>
+
+                      {/* Progress Bar */}
+                      <View style={[styles.envProgressTrack, { backgroundColor: isDark ? '#262A34' : '#E2E8F0' }]}>
+                        <View
+                          style={[
+                            styles.envProgressFill,
+                            { width: `${Math.min(100, item.percentage)}%`, backgroundColor: item.color },
+                          ]}
+                        />
+                      </View>
+
+                      {/* Card Sub-Footer */}
+                      <View style={styles.envCardFooter}>
+                        <Text style={[styles.envTxCount, { color: theme.textSecondary }]}>
+                          {catTxs.length > 0 ? `${catTxs.length} transactions` : `${item.txCount} transactions`}
+                        </Text>
+                        <Text style={[styles.envNote, { color: theme.textSecondary }]}>{item.note}</Text>
+                      </View>
+
+                      {/* Expanded Transactions for this Category */}
+                      {isExpanded && (
+                        <View style={[styles.expandedTxList, { borderTopColor: theme.border }]}>
+                          {catTxs.length === 0 ? (
+                            <Text style={[styles.noTxText, { color: theme.textMuted }]}>
+                              No transactions found for this category in this cycle.
+                            </Text>
+                          ) : (
+                            catTxs.map((tx) => (
+                              <View key={tx.id} style={styles.txRow}>
+                                <View style={styles.txRowLeft}>
+                                  <Text style={[styles.txDesc, { color: theme.text }]}>
+                                    {tx.description || item.name}
+                                  </Text>
+                                  <Text style={[styles.txDate, { color: theme.textMuted }]}>
+                                    {new Date(tx.date).toLocaleDateString([], {
+                                      month: 'short',
+                                      day: 'numeric',
+                                    })} • {tx.wallet_name || 'Main Wallet'}
+                                  </Text>
+                                </View>
+                                <View style={styles.txRowRight}>
+                                  <Text style={[styles.txAmount, { color: '#F43F5E' }]}>
+                                    -{formatCurrency(tx.amount)}
+                                  </Text>
+                                  <Pressable
+                                    style={styles.txDeleteMiniBtn}
+                                    hitSlop={8}
+                                    onPress={() => handleDeleteTransaction(tx)}>
+                                    <Trash size={moderateScale(13)} color="#F43F5E" />
+                                  </Pressable>
+                                </View>
+                              </View>
+                            ))
+                          )}
+                        </View>
                       )}
                     </View>
-                  )}
-                </View>
-              );
-            })
-          )}
-        </View>
+                  );
+                })
+              )}
+            </View>
           </ScrollView>
         </View>
 

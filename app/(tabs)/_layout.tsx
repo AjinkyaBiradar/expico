@@ -2,19 +2,16 @@ import { router, Tabs, usePathname } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { Bell, ChartLineUp, Plus, SquaresFour, UserGear } from 'phosphor-react-native';
 import React, { useEffect } from 'react';
-import { Platform, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Colors } from '@/constants/colors';
 import { getDueSoonRemindersCount } from '@/db/queries';
-import { setDueSoonCount, useDueSoonCount } from '@/utils/settings';
+import { setDueSoonCount, useAppTheme, useDueSoonCount } from '@/utils/settings';
 import { moderateScale, Radius } from '@/utils/styling';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const theme = isDark ? Colors.dark : Colors.light;
+  const { isDark, theme } = useAppTheme();
   const db = useSQLiteContext();
   const pathname = usePathname();
   const dueSoonCount = useDueSoonCount();

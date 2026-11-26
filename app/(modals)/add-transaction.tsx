@@ -21,7 +21,6 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  useColorScheme,
   View,
 } from 'react-native';
 
@@ -33,7 +32,6 @@ import {
   getDistinctFoodMeta,
   registerCategories,
 } from '@/constants/categories';
-import { Colors } from '@/constants/colors';
 import {
   addTransaction,
   createCategory,
@@ -56,10 +54,7 @@ const QUICK_AMOUNTS = [100, 200, 500, 1000, 2000, 5000];
 export default function AddTransactionModal() {
   const router = useRouter();
   const db = useSQLiteContext();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const theme = isDark ? Colors.dark : Colors.light;
-  const { currency } = useSettings();
+  const { isDark, theme, currency } = useSettings();
 
   const [type, setType] = useState<'expense' | 'income'>('expense');
   const [amount, setAmount] = useState('');

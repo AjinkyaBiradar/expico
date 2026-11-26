@@ -1,6 +1,8 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { useEffect, useState } from 'react';
-import { Appearance } from 'react-native';
+import { Appearance, useColorScheme } from 'react-native';
+
+import { Colors } from '@/constants/colors';
 
 export interface CurrencyConfig {
   code: string;
@@ -165,10 +167,18 @@ export function useSettings() {
     };
   }, []);
 
+  const systemColorScheme = useColorScheme();
+  const themePref = getThemePreference();
+  const isDark =
+    themePref === 'dark' || (themePref === 'system' && systemColorScheme === 'dark');
+  const theme = isDark ? Colors.dark : Colors.light;
+
   return {
+    isDark,
+    theme,
     currency: getActiveCurrency(),
     currencies: CURRENCIES,
-    themePreference: getThemePreference(),
+    themePreference: themePref,
     lastInsightsSegment: getLastInsightsSegment(),
     dueSoonCount: dueSoonRemindersCount,
     setCurrency: setActiveCurrencyAsync,
@@ -176,4 +186,9 @@ export function useSettings() {
     setLastInsightsSegment: setLastInsightsSegmentAsync,
     setDueSoonCount,
   };
+}
+
+export function useAppTheme() {
+  const { isDark, theme, themePreference } = useSettings();
+  return { isDark, theme, themePreference };
 }

@@ -3,12 +3,11 @@ import { Stack } from 'expo-router';
 import { SQLiteProvider } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
 import React, { Suspense, useEffect } from 'react';
-import { ActivityIndicator, Platform, Text, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, Platform, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-import { Colors } from '@/constants/colors';
 import { migrateDbIfNeeded } from '@/db/schema';
-import { initSettingsAsync } from '@/utils/settings';
+import { initSettingsAsync, useAppTheme } from '@/utils/settings';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -39,9 +38,7 @@ function LoadingScreen({ isDark, primaryColor, textColor }: { isDark: boolean; p
 }
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const theme = isDark ? Colors.dark : Colors.light;
+  const { isDark, theme } = useAppTheme();
 
   useEffect(() => {
     initSettingsAsync();

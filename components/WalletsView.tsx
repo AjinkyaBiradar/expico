@@ -20,13 +20,11 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  useColorScheme,
   View,
 } from 'react-native';
 
 import { CategoryIcon } from '@/components/CategoryIcon';
 import { registerCategories } from '@/constants/categories';
-import { Colors } from '@/constants/colors';
 import {
   addTransaction,
   deleteWallet,
@@ -46,10 +44,7 @@ interface WalletsViewProps {
 export function WalletsView({ onAddWalletPress }: WalletsViewProps) {
   const router = useRouter();
   const db = useSQLiteContext();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const theme = isDark ? Colors.dark : Colors.light;
-  const { currency } = useSettings();
+  const { isDark, theme, currency } = useSettings();
 
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [refreshing, setRefreshing] = useState(false);

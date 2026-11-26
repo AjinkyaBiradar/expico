@@ -9,12 +9,10 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  useColorScheme,
   View,
 } from 'react-native';
 
 import { CategoryIcon } from '@/components/CategoryIcon';
-import { Colors } from '@/constants/colors';
 import { addWallet } from '@/db/queries';
 import { generateUUID } from '@/utils/formatters';
 import { useSettings } from '@/utils/settings';
@@ -30,9 +28,7 @@ export const WALLET_ICONS = [
 export default function AddWalletModal() {
   const router = useRouter();
   const db = useSQLiteContext();
-  const colorScheme = useColorScheme();
-  const theme = colorScheme === 'dark' ? Colors.dark : Colors.light;
-  const { currency } = useSettings();
+  const { theme, currency } = useSettings();
 
   const [name, setName] = useState('');
   const [initialBalance, setInitialBalance] = useState('');

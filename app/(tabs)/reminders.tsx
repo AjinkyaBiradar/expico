@@ -14,9 +14,9 @@ import {
   Trash,
   Warning,
   WarningCircle,
-  X,
+  X
 } from 'phosphor-react-native';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Modal,
@@ -26,14 +26,12 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  useColorScheme,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { CategoryIcon } from '@/components/CategoryIcon';
 import { ALL_CATEGORIES, Category, registerCategories } from '@/constants/categories';
-import { Colors } from '@/constants/colors';
 import {
   createReminder,
   deleteReminder,
@@ -72,10 +70,7 @@ const QUICK_SUGGESTIONS: QuickSuggestion[] = [
 
 export default function RemindersScreen() {
   const db = useSQLiteContext();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const theme = isDark ? Colors.dark : Colors.light;
-  const { currency, setDueSoonCount } = useSettings();
+  const { isDark, theme, currency, setDueSoonCount } = useSettings();
   const params = useLocalSearchParams<{ openAdd?: string }>();
 
   const [reminders, setReminders] = useState<Reminder[]>([]);
@@ -400,10 +395,10 @@ export default function RemindersScreen() {
     const dateLabel = isToday
       ? `Today at ${timeStr}`
       : isTomorrow
-      ? `Tomorrow at ${timeStr}`
-      : isOverdue
-      ? `Overdue • ${formatDateLabel(item.due_date)} ${timeStr}`
-      : `${formatDateLabel(item.due_date)} at ${timeStr}`;
+        ? `Tomorrow at ${timeStr}`
+        : isOverdue
+          ? `Overdue • ${formatDateLabel(item.due_date)} ${timeStr}`
+          : `${formatDateLabel(item.due_date)} at ${timeStr}`;
 
     return (
       <View
@@ -415,8 +410,8 @@ export default function RemindersScreen() {
             borderColor: isOverdue
               ? 'rgba(244, 63, 94, 0.45)'
               : isToday
-              ? 'rgba(245, 158, 11, 0.4)'
-              : theme.border,
+                ? 'rgba(245, 158, 11, 0.4)'
+                : theme.border,
             opacity: isDone ? 0.6 : 1,
           },
         ]}>
@@ -756,8 +751,8 @@ export default function RemindersScreen() {
                             title === item.title
                               ? 'rgba(16, 185, 129, 0.2)'
                               : isDark
-                              ? '#1C1F29'
-                              : '#F1F5F9',
+                                ? '#1C1F29'
+                                : '#F1F5F9',
                           borderColor: title === item.title ? '#10B981' : 'transparent',
                         },
                       ]}

@@ -30,12 +30,10 @@ import {
   StyleSheet,
   Switch,
   Text,
-  useColorScheme,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Colors } from '@/constants/colors';
 import { clearAllTransactions } from '@/db/queries';
 import { useSettings } from '@/utils/settings';
 import { fontScale, moderateScale, Radius, Spacing } from '@/utils/styling';
@@ -43,12 +41,7 @@ import { fontScale, moderateScale, Radius, Spacing } from '@/utils/styling';
 export default function ProfileScreen() {
   const router = useRouter();
   const db = useSQLiteContext();
-  const colorScheme = useColorScheme();
-  const { currency, currencies, themePreference, setCurrency, setThemePreference } = useSettings();
-
-  const isDark =
-    themePreference === 'dark' || (themePreference === 'system' && colorScheme === 'dark');
-  const theme = isDark ? Colors.dark : Colors.light;
+  const { isDark, theme, currency, currencies, themePreference, setCurrency, setThemePreference } = useSettings();
 
   const [isFullScreen, setIsFullScreen] = useState(true);
   const [isBiometricEnabled, setIsBiometricEnabled] = useState(false);
