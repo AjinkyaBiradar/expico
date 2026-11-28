@@ -1,18 +1,17 @@
 import { Stack } from 'expo-router';
-import React from 'react';
 
-import { useAppTheme } from '@/utils/settings';
+import { useTheme } from '@/features/theme';
 
 export default function ModalsLayout() {
-  const { theme } = useAppTheme();
+  const { colors } = useTheme();
 
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: '#1C1F29' },
-        headerTintColor: theme.text,
-        headerTitleStyle: { color: theme.text, fontWeight: '700' },
-        contentStyle: { backgroundColor: '#0F131C' },
+        headerStyle: { backgroundColor: colors.headerBackground },
+        headerTintColor: colors.text,
+        headerTitleStyle: { color: colors.text, fontWeight: '700' },
+        contentStyle: { backgroundColor: colors.background },
       }}>
       <Stack.Screen
         name="add-transaction"

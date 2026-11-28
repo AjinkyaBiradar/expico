@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { Check } from 'phosphor-react-native';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -145,8 +145,8 @@ export default function AddWalletModal() {
         ]}
         disabled={isSubmitting}
         onPress={handleSubmit}>
-        <Check size={moderateScale(20)} color="#FFFFFF" weight="bold" />
-        <Text style={styles.submitText}>Add Wallet</Text>
+        <Check size={moderateScale(20)} color={theme.accentContrast} weight="bold" />
+        <Text style={[styles.submitText, { color: theme.accentContrast }]}>Add Wallet</Text>
       </Pressable>
     </ScrollView>
   );
@@ -210,7 +210,6 @@ const styles = StyleSheet.create({
     marginTop: Spacing.sm,
   },
   submitText: {
-    color: '#FFFFFF',
     fontSize: fontScale(16),
     fontWeight: '700',
   },

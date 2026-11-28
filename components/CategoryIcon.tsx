@@ -39,8 +39,8 @@ import {
   Wallet,
   Wine,
 } from 'phosphor-react-native';
-import React from 'react';
 
+import { useTheme } from '@/features/theme';
 import { moderateScale } from '@/utils/styling';
 
 const ICON_MAP: Record<string, Icon> = {
@@ -93,10 +93,11 @@ interface CategoryIconProps {
 
 export function CategoryIcon({
   name,
-  color = '#6B7280',
+  color,
   size = moderateScale(20),
   weight = 'fill',
 }: CategoryIconProps) {
+  const { colors } = useTheme();
   const IconComponent = ICON_MAP[name] || DotsThreeOutline;
-  return <IconComponent size={size} color={color} weight={weight} />;
+  return <IconComponent size={size} color={color || colors.textMuted} weight={weight} />;
 }

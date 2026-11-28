@@ -32,6 +32,7 @@ import {
   getTransactions,
   TransactionWithWallet,
 } from '@/db/queries';
+import { useTheme } from '@/features/theme';
 import {
   formatDisplayDate,
   formatDisplayTime,
@@ -39,12 +40,11 @@ import {
   formatStatCurrency as safeFormatStatCurrency,
 } from '@/utils/formatters';
 import { fontScale, moderateScale, Radius, Spacing } from '@/utils/styling';
-import { useAppTheme } from '@/utils/settings';
 
 export default function HomeScreen() {
   const router = useRouter();
   const db = useSQLiteContext();
-  const { isDark, theme } = useAppTheme();
+  const { colors } = useTheme();
 
   // Real-time state
   const [transactions, setTransactions] = useState<TransactionWithWallet[]>([]);
@@ -291,24 +291,24 @@ export default function HomeScreen() {
 
 
   return (
-    <SafeAreaView style={[styles.screen, { backgroundColor: theme.background }]} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
       {/* 1. VAULTFLOW TOP HEADER */}
       <View style={styles.topHeader}>
         <View style={styles.headerLeft}>
-          <View style={[styles.avatarCircle, { backgroundColor: theme.primary }]}>
-            <User size={moderateScale(18)} color="#003824" weight="bold" />
+          <View style={[styles.avatarCircle, { backgroundColor: colors.primary }]}>
+            <User size={moderateScale(18)} color={colors.accentContrast} weight="bold" />
           </View>
           <View>
-            <Text style={[styles.appBranding, { color: theme.textSecondary }]}>VAULTFLOW</Text>
-            <Text style={[styles.screenTitle, { color: theme.text }]}>Dashboard</Text>
+            <Text style={[styles.appBranding, { color: colors.textSecondary }]}>VAULTFLOW</Text>
+            <Text style={[styles.screenTitle, { color: colors.text }]}>Dashboard</Text>
           </View>
         </View>
 
         <Pressable
-          style={[styles.iconButton, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}
+          style={[styles.iconButton, { backgroundColor: colors.surfaceVariant }]}
           onPress={() => Alert.alert('Notifications', 'All your accounts and limits are on track!')}>
-          <Bell size={moderateScale(20)} color={theme.text} weight="bold" />
-          <View style={styles.notificationDot} />
+          <Bell size={moderateScale(20)} color={colors.text} weight="bold" />
+          <View style={[styles.notificationDot, { backgroundColor: colors.primary }]} />
         </Pressable>
       </View>
 
@@ -316,102 +316,102 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.primary} />
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
         }>
         {/* 2. REMAINING / TOTAL AVAILABLE BALANCE CARD */}
-        <View style={[styles.balanceCard, { backgroundColor: isDark ? '#262A34' : '#FFFFFF', borderColor: theme.border }]}>
+        <View style={[styles.balanceCard, { backgroundColor: colors.card, borderColor: colors.border, shadowColor: colors.shadowColor }]}>
           {/* Subtle Ambient Radial Radiance */}
-          <View style={styles.glowTopRight} />
-          <View style={styles.glowBottomLeft} />
+          <View style={[styles.glowTopRight, { backgroundColor: colors.incomeLight }]} />
+          <View style={[styles.glowBottomLeft, { backgroundColor: colors.primaryLight }]} />
 
           {/* Sub-header */}
           <View style={styles.balanceSubHeader}>
             <View style={styles.balanceLabelGroup}>
-              <Text style={[styles.balanceCardLabel, { color: theme.textSecondary }]}>
+              <Text style={[styles.balanceCardLabel, { color: colors.textSecondary }]}>
                 TOTAL AVAILABLE BALANCE
               </Text>
               <Pressable
                 style={styles.eyeBtn}
                 onPress={() => setIsBalanceHidden((prev) => !prev)}>
                 {isBalanceHidden ? (
-                  <EyeSlash size={moderateScale(16)} color={theme.textSecondary} weight="bold" />
+                  <EyeSlash size={moderateScale(16)} color={colors.textSecondary} weight="bold" />
                 ) : (
-                  <Eye size={moderateScale(16)} color={theme.textSecondary} weight="bold" />
+                  <Eye size={moderateScale(16)} color={colors.textSecondary} weight="bold" />
                 )}
               </Pressable>
             </View>
 
-            <View style={[styles.periodPill, { backgroundColor: isDark ? '#31353F' : '#F1F5F9' }]}>
-              <Text style={[styles.periodPillText, { color: theme.text }]}>
+            <View style={[styles.periodPill, { backgroundColor: colors.surfaceVariant }]}>
+              <Text style={[styles.periodPillText, { color: colors.text }]}>
                 {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
               </Text>
-              <CaretDown size={moderateScale(12)} color={theme.textSecondary} weight="bold" />
+              <CaretDown size={moderateScale(12)} color={colors.textSecondary} weight="bold" />
             </View>
           </View>
 
           {/* Main Balance Display */}
-          <Text style={[styles.balanceAmountText, { color: theme.text }]}>
+          <Text style={[styles.balanceAmountText, { color: colors.text }]}>
             {formatCurrency(totalBalance)}
           </Text>
 
           {/* Month over Month Badge */}
           <View style={styles.momRow}>
-            <View style={[styles.momBadge, { backgroundColor: 'rgba(16, 185, 129, 0.2)' }]}>
-              <Text style={styles.momBadgeText}>Ledger Active</Text>
+            <View style={[styles.momBadge, { backgroundColor: colors.incomeLight }]}>
+              <Text style={[styles.momBadgeText, { color: colors.income }]}>Ledger Active</Text>
             </View>
-            <Text style={[styles.momSubtext, { color: theme.textSecondary }]}>Real-time Balance</Text>
+            <Text style={[styles.momSubtext, { color: colors.textSecondary }]}>Real-time Balance</Text>
           </View>
         </View>
 
         {/* 3. SPLIT INCOME & EXPENSE CARDS */}
         <View style={styles.splitCardsRow}>
           {/* Total Income */}
-          <View style={[styles.splitCard, { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF', borderColor: theme.border }]}>
+          <View style={[styles.splitCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.splitCardHeader}>
-              <View style={[styles.splitIconCircle, { backgroundColor: 'rgba(16, 185, 129, 0.2)' }]}>
-                <ArrowUpRight size={moderateScale(18)} color="#10B981" weight="bold" />
+              <View style={[styles.splitIconCircle, { backgroundColor: colors.incomeLight }]}>
+                <ArrowUpRight size={moderateScale(18)} color={colors.income} weight="bold" />
               </View>
-              <View style={[styles.statChangeBadge, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
-                <Text style={[styles.statChangeText, { color: '#10B981' }]}>Income</Text>
+              <View style={[styles.statChangeBadge, { backgroundColor: colors.incomeLight }]}>
+                <Text style={[styles.statChangeText, { color: colors.income }]}>Income</Text>
               </View>
             </View>
-            <Text style={[styles.splitCardLabel, { color: theme.textSecondary }]}>TOTAL INCOME</Text>
-            <Text style={[styles.splitCardValue, { color: isDark ? '#4EDEA3' : '#059669' }]}>
+            <Text style={[styles.splitCardLabel, { color: colors.textSecondary }]}>TOTAL INCOME</Text>
+            <Text style={[styles.splitCardValue, { color: colors.income }]}>
               +{formatStatCurrency(totalIncome)}
             </Text>
           </View>
 
           {/* Total Expenses */}
-          <View style={[styles.splitCard, { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF', borderColor: theme.border }]}>
+          <View style={[styles.splitCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.splitCardHeader}>
-              <View style={[styles.splitIconCircle, { backgroundColor: 'rgba(244, 63, 94, 0.2)' }]}>
-                <ArrowDownLeft size={moderateScale(18)} color="#F43F5E" weight="bold" />
+              <View style={[styles.splitIconCircle, { backgroundColor: colors.dangerLight }]}>
+                <ArrowDownLeft size={moderateScale(18)} color={colors.danger} weight="bold" />
               </View>
-              <View style={[styles.statChangeBadge, { backgroundColor: 'rgba(244, 63, 94, 0.15)' }]}>
-                <Text style={[styles.statChangeText, { color: '#F43F5E' }]}>Expenses</Text>
+              <View style={[styles.statChangeBadge, { backgroundColor: colors.dangerLight }]}>
+                <Text style={[styles.statChangeText, { color: colors.danger }]}>Expenses</Text>
               </View>
             </View>
-            <Text style={[styles.splitCardLabel, { color: theme.textSecondary }]}>TOTAL EXPENSES</Text>
-            <Text style={[styles.splitCardValue, { color: isDark ? '#FFB2B7' : '#E11D48' }]}>
+            <Text style={[styles.splitCardLabel, { color: colors.textSecondary }]}>TOTAL EXPENSES</Text>
+            <Text style={[styles.splitCardValue, { color: colors.danger }]}>
               -{formatStatCurrency(totalExpense)}
             </Text>
           </View>
         </View>
 
         {/* 4. WEEKLY SPENDING ACTIVITY SECTION */}
-        <View style={[styles.activitySection, { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF', borderColor: theme.border }]}>
+        <View style={[styles.activitySection, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.activityHeader}>
             <View>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>Weekly Spending Activity</Text>
-              <Text style={[styles.activitySub, { color: theme.textSecondary }]}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Weekly Spending Activity</Text>
+              <Text style={[styles.activitySub, { color: colors.textSecondary }]}>
                 Avg {formatStatCurrency(avgPerDay)} / day this cycle
               </Text>
             </View>
 
             {/* Cycle Pill Toggle */}
-            <View style={[styles.cycleToggleWrap, { backgroundColor: isDark ? '#262A34' : '#F1F5F9' }]}>
+            <View style={[styles.cycleToggleWrap, { backgroundColor: colors.surfaceVariant }]}>
               <Pressable
-                style={[styles.cycleBtn, activeWeekCycle === 'thisWeek' && styles.cycleBtnActive]}
+                style={[styles.cycleBtn, activeWeekCycle === 'thisWeek' && [styles.cycleBtnActive, { backgroundColor: colors.primary }]]}
                 onPress={() => {
                   setActiveWeekCycle('thisWeek');
                   setSelectedDayIndex(null);
@@ -419,13 +419,13 @@ export default function HomeScreen() {
                 <Text
                   style={[
                     styles.cycleText,
-                    { color: activeWeekCycle === 'thisWeek' ? '#003824' : theme.textSecondary },
+                    { color: activeWeekCycle === 'thisWeek' ? colors.accentContrast : colors.textSecondary },
                   ]}>
                   This Week
                 </Text>
               </Pressable>
               <Pressable
-                style={[styles.cycleBtn, activeWeekCycle === 'lastWeek' && styles.cycleBtnActive]}
+                style={[styles.cycleBtn, activeWeekCycle === 'lastWeek' && [styles.cycleBtnActive, { backgroundColor: colors.primary }]]}
                 onPress={() => {
                   setActiveWeekCycle('lastWeek');
                   setSelectedDayIndex(null);
@@ -433,7 +433,7 @@ export default function HomeScreen() {
                 <Text
                   style={[
                     styles.cycleText,
-                    { color: activeWeekCycle === 'lastWeek' ? '#003824' : theme.textSecondary },
+                    { color: activeWeekCycle === 'lastWeek' ? colors.accentContrast : colors.textSecondary },
                   ]}>
                   Last Week
                 </Text>
@@ -444,23 +444,23 @@ export default function HomeScreen() {
           {/* Peak / Selection Tooltip Header */}
           <View style={styles.peakTooltipRow}>
             {selectedDayIndex !== null && weeklyData[selectedDayIndex] ? (
-              <View style={[styles.peakBadge, { backgroundColor: isDark ? '#262A34' : '#E0F2FE' }]}>
+              <View style={[styles.peakBadge, { backgroundColor: colors.surfaceVariant }]}>
                 <View
                   style={[
                     styles.peakDot,
-                    { backgroundColor: weeklyData[selectedDayIndex].isPeak ? '#F43F5E' : '#0284C7' },
+                    { backgroundColor: weeklyData[selectedDayIndex].isPeak ? colors.danger : colors.primary },
                   ]}
                 />
-                <Text style={[styles.peakText, { color: theme.text }]}>
+                <Text style={[styles.peakText, { color: colors.text }]}>
                   {weeklyData[selectedDayIndex].full}: {formatCurrency(weeklyData[selectedDayIndex].amount)}
                   {weeklyData[selectedDayIndex].isPeak ? ' (Peak)' : ''}
                 </Text>
                 <Pressable hitSlop={8} onPress={() => setSelectedDayIndex(null)}>
-                  <Text style={[styles.clearFilterText, { color: theme.primary }]}>✕ Clear</Text>
+                  <Text style={[styles.clearFilterText, { color: colors.primary }]}>✕ Clear</Text>
                 </Pressable>
               </View>
             ) : (
-              <Text style={[styles.peakHintText, { color: theme.textMuted }]}>
+              <Text style={[styles.peakHintText, { color: colors.textMuted }]}>
                 Tap any day to view details & filter ledger
               </Text>
             )}
@@ -482,10 +482,10 @@ export default function HomeScreen() {
                         styles.barFill,
                         { height: `${col.heightPct}%` },
                         col.isPeak
-                          ? { backgroundColor: '#F43F5E' }
+                          ? { backgroundColor: colors.danger }
                           : isSelected
-                            ? { backgroundColor: '#10B981' }
-                            : { backgroundColor: isDark ? '#31353F' : '#E2E8F0' },
+                            ? { backgroundColor: colors.income }
+                            : { backgroundColor: colors.surfaceVariant },
                       ]}
                     />
                   </View>
@@ -494,17 +494,17 @@ export default function HomeScreen() {
                       styles.barLabel,
                       {
                         color: isSelected
-                          ? '#10B981'
+                          ? colors.income
                           : col.isPeak
-                            ? '#F43F5E'
-                            : theme.textSecondary,
+                            ? colors.danger
+                            : colors.textSecondary,
                         fontWeight: isSelected || col.isPeak ? '700' : '500',
                       },
                     ]}>
                     {col.day}
                   </Text>
                   {isSelected && (
-                    <View style={[styles.activeDayDot, { backgroundColor: '#10B981' }]} />
+                    <View style={[styles.activeDayDot, { backgroundColor: colors.income }]} />
                   )}
                 </Pressable>
               );
@@ -522,23 +522,21 @@ export default function HomeScreen() {
                     style={[
                       styles.allocPill,
                       {
-                        backgroundColor: isSelected
-                          ? (isDark ? 'rgba(16, 185, 129, 0.25)' : '#D1FAE5')
-                          : (isDark ? '#262A34' : '#F1F5F9'),
-                        borderColor: isSelected ? '#10B981' : 'transparent',
+                        backgroundColor: isSelected ? colors.incomeLight : colors.surfaceVariant,
+                        borderColor: isSelected ? colors.income : 'transparent',
                         borderWidth: 1,
                       },
                     ]}
                     onPress={() => setSelectedFilterCat(isSelected ? 'all' : alloc.id)}>
                     <View style={[styles.allocDot, { backgroundColor: alloc.color }]} />
-                    <Text style={[styles.allocText, { color: theme.text }]}>
+                    <Text style={[styles.allocText, { color: colors.text }]}>
                       {alloc.name} {alloc.pct}%
                     </Text>
                   </Pressable>
                 );
               })
             ) : (
-              <Text style={{ color: theme.textMuted, fontSize: fontScale(11) }}>
+              <Text style={{ color: colors.textMuted, fontSize: fontScale(11) }}>
                 No category expenses logged for this cycle
               </Text>
             )}
@@ -550,14 +548,14 @@ export default function HomeScreen() {
           <View style={styles.txHeaderRow}>
             <View>
               <View style={styles.sectionTitleWithCount}>
-                <Text style={[styles.sectionTitle, { color: theme.text }]}>All Transactions</Text>
-                <View style={[styles.countBadge, { backgroundColor: isDark ? '#262A34' : '#F1F5F9' }]}>
-                  <Text style={[styles.countBadgeText, { color: theme.primary }]}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>All Transactions</Text>
+                <View style={[styles.countBadge, { backgroundColor: colors.surfaceVariant }]}>
+                  <Text style={[styles.countBadgeText, { color: colors.primary }]}>
                     {filteredTransactions.length}
                   </Text>
                 </View>
               </View>
-              <Text style={[styles.activitySub, { color: theme.textSecondary }]}>
+              <Text style={[styles.activitySub, { color: colors.textSecondary }]}>
                 {selectedDayIndex !== null && weeklyData[selectedDayIndex]
                   ? `Filtered: ${weeklyData[selectedDayIndex].full}`
                   : selectedMonthFilter !== 'all'
@@ -566,7 +564,7 @@ export default function HomeScreen() {
               </Text>
             </View>
             <Pressable onPress={() => router.push('/(tabs)/analytics')}>
-              <Text style={[styles.seeAllText, { color: theme.primary }]}>ANALYTICS</Text>
+              <Text style={[styles.seeAllText, { color: colors.primary }]}>ANALYTICS</Text>
             </Pressable>
           </View>
 
@@ -583,19 +581,19 @@ export default function HomeScreen() {
                       style={[
                         styles.monthFilterBtn,
                         active
-                          ? { backgroundColor: theme.primary }
-                          : { backgroundColor: isDark ? '#262A34' : '#F1F5F9' },
+                          ? { backgroundColor: colors.primary }
+                          : { backgroundColor: colors.surfaceVariant },
                       ]}
                       onPress={() => setSelectedMonthFilter(m)}>
                       <CalendarBlank
                         size={moderateScale(12)}
-                        color={active ? '#003824' : theme.textSecondary}
+                        color={active ? colors.accentContrast : colors.textSecondary}
                         weight={active ? 'bold' : 'regular'}
                       />
                       <Text
                         style={[
                           styles.monthFilterText,
-                          { color: active ? '#003824' : theme.textSecondary, fontWeight: active ? '700' : '600' },
+                          { color: active ? colors.accentContrast : colors.textSecondary, fontWeight: active ? '700' : '600' },
                         ]}>
                         {m === 'all' ? 'All Months' : m}
                       </Text>
@@ -618,14 +616,14 @@ export default function HomeScreen() {
                     style={[
                       styles.categoryFilterBtn,
                       active
-                        ? { backgroundColor: '#10B981' }
-                        : { backgroundColor: isDark ? '#262A34' : '#F1F5F9' },
+                        ? { backgroundColor: colors.primary }
+                        : { backgroundColor: colors.surfaceVariant },
                     ]}
                     onPress={() => setSelectedFilterCat(cat)}>
                     <Text
                       style={[
                         styles.categoryFilterText,
-                        { color: active ? '#003824' : theme.textSecondary, fontWeight: active ? '700' : '600' },
+                        { color: active ? colors.accentContrast : colors.textSecondary, fontWeight: active ? '700' : '600' },
                       ]}>
                       {label}
                     </Text>
@@ -639,7 +637,7 @@ export default function HomeScreen() {
           {groupedTransactions.length > 0 ? (
             groupedTransactions.map((group, gIdx) => (
               <View key={`group-${gIdx}`} style={styles.dateGroupContainer}>
-                <Text style={[styles.dateGroupTitle, { color: theme.textSecondary }]}>
+                <Text style={[styles.dateGroupTitle, { color: colors.textSecondary }]}>
                   {group.title.toUpperCase()}
                 </Text>
                 <View style={styles.dateGroupCards}>
@@ -652,32 +650,32 @@ export default function HomeScreen() {
                         key={tx.id}
                         style={[
                           styles.transactionCard,
-                          { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF', borderColor: theme.border },
+                          { backgroundColor: colors.card, borderColor: colors.border },
                         ]}>
                         <View style={styles.txLeft}>
                           <View
                             style={[
                               styles.txIconSquircle,
-                              { backgroundColor: isDark ? '#262A34' : '#F1F5F9' },
+                              { backgroundColor: colors.surfaceVariant },
                             ]}>
                             <CategoryIcon name={categoryInfo.icon} size={moderateScale(20)} color={categoryInfo.color} />
                           </View>
                           <View style={styles.txDetails}>
                             <View style={styles.txTitleRow}>
-                              <Text style={[styles.txTitle, { color: theme.text }]} numberOfLines={1}>
+                              <Text style={[styles.txTitle, { color: colors.text }]} numberOfLines={1}>
                                 {tx.description || categoryInfo.name}
                               </Text>
                               <View
                                 style={[
                                   styles.txCategoryTag,
-                                  { backgroundColor: isDark ? '#262A34' : '#F1F5F9' },
+                                  { backgroundColor: colors.surfaceVariant },
                                 ]}>
                                 <Text style={[styles.txCategoryTagText, { color: categoryInfo.color }]}>
                                   {categoryInfo.name}
                                 </Text>
                               </View>
                             </View>
-                            <Text style={[styles.txSubtext, { color: theme.textMuted }]}>
+                            <Text style={[styles.txSubtext, { color: colors.textMuted }]}>
                               {formatDisplayDate(tx.date)} • {formatDisplayTime(tx.date)} •{' '}
                               {tx.wallet_name || 'Main Wallet'}
                             </Text>
@@ -688,7 +686,7 @@ export default function HomeScreen() {
                           <Text
                             style={[
                               styles.txAmount,
-                              { color: isIncome ? '#10B981' : theme.text },
+                              { color: isIncome ? colors.income : colors.text },
                             ]}>
                             {isIncome ? '+' : '-'}
                             {formatCurrency(tx.amount)}
@@ -698,12 +696,12 @@ export default function HomeScreen() {
                               styles.txDeleteBtn,
                               {
                                 opacity: pressed ? 0.6 : 1,
-                                backgroundColor: isDark ? 'rgba(244, 63, 94, 0.15)' : '#FFE4E6',
+                                backgroundColor: colors.dangerLight,
                               },
                             ]}
                             hitSlop={8}
                             onPress={() => handleDeleteTransaction(tx)}>
-                            <Trash size={moderateScale(15)} color="#F43F5E" />
+                            <Trash size={moderateScale(15)} color={colors.danger} />
                           </Pressable>
                         </View>
                       </View>
@@ -713,9 +711,9 @@ export default function HomeScreen() {
               </View>
             ))
           ) : (
-            <View style={[styles.emptyContainer, { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF' }]}>
-              <Text style={[styles.emptyTitle, { color: theme.text }]}>No Transactions Found</Text>
-              <Text style={[styles.emptySubtitle, { color: theme.textMuted }]}>
+            <View style={[styles.emptyContainer, { backgroundColor: colors.card }]}>
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>No Transactions Found</Text>
+              <Text style={[styles.emptySubtitle, { color: colors.textMuted }]}>
                 No entries found for the selected month or category.
               </Text>
             </View>
@@ -771,7 +769,6 @@ const styles = StyleSheet.create({
     width: moderateScale(8),
     height: moderateScale(8),
     borderRadius: Radius.full,
-    backgroundColor: '#10B981',
     position: 'absolute',
     top: moderateScale(8),
     right: moderateScale(10),
@@ -789,7 +786,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     overflow: 'hidden',
     position: 'relative',
-    shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.35,
     shadowRadius: 20,
@@ -802,7 +798,6 @@ const styles = StyleSheet.create({
     width: moderateScale(140),
     height: moderateScale(140),
     borderRadius: Radius.full,
-    backgroundColor: 'rgba(16, 185, 129, 0.12)',
   },
   glowBottomLeft: {
     position: 'absolute',
@@ -811,7 +806,6 @@ const styles = StyleSheet.create({
     width: moderateScale(120),
     height: moderateScale(120),
     borderRadius: Radius.full,
-    backgroundColor: 'rgba(99, 102, 241, 0.1)',
   },
   balanceSubHeader: {
     flexDirection: 'row',
@@ -862,7 +856,6 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
   },
   momBadgeText: {
-    color: '#10B981',
     fontSize: fontScale(11),
     fontWeight: '700',
   },
@@ -946,9 +939,7 @@ const styles = StyleSheet.create({
     paddingVertical: moderateScale(4),
     borderRadius: Radius.full,
   },
-  cycleBtnActive: {
-    backgroundColor: '#10B981',
-  },
+  cycleBtnActive: {},
   cycleText: {
     fontSize: fontScale(10),
     fontWeight: '700',

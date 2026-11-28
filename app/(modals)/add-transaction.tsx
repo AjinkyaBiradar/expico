@@ -12,7 +12,7 @@ import {
   Wallet as WalletIcon,
   X,
 } from 'phosphor-react-native';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Modal,
@@ -379,7 +379,7 @@ export default function AddTransactionModal() {
           <Text
             style={[
               styles.toggleText,
-              { color: type === 'income' ? '#003824' : theme.textSecondary, fontWeight: type === 'income' ? '800' : '600' },
+              { color: type === 'income' ? theme.accentContrast : theme.textSecondary, fontWeight: type === 'income' ? '800' : '600' },
             ]}>
             Income
           </Text>
@@ -524,13 +524,13 @@ export default function AddTransactionModal() {
               onPress={handleOpenAddCategory}>
               <Plus
                 size={moderateScale(16)}
-                color={type === 'expense' ? '#FFFFFF' : '#003824'}
+                color={type === 'expense' ? '#FFFFFF' : theme.accentContrast}
                 weight="bold"
               />
               <Text
                 style={[
                   styles.addCatPrimaryBtnText,
-                  { color: type === 'expense' ? '#FFFFFF' : '#003824' },
+                  { color: type === 'expense' ? '#FFFFFF' : theme.accentContrast },
                 ]}>
                 + Add {type === 'expense' ? 'Expense' : 'Income'} Category
               </Text>
@@ -613,7 +613,7 @@ export default function AddTransactionModal() {
             <Text
               style={[
                 styles.dateQuickText,
-                { color: isToday(selectedDate) ? (type === 'expense' ? '#FFFFFF' : '#003824') : theme.text },
+                { color: isToday(selectedDate) ? (type === 'expense' ? '#FFFFFF' : theme.accentContrast) : theme.text },
               ]}>
               Today
             </Text>
@@ -665,11 +665,11 @@ export default function AddTransactionModal() {
         ]}
         disabled={isSubmitting}
         onPress={handleSubmit}>
-        <Check size={moderateScale(20)} color={type === 'expense' ? '#FFFFFF' : '#003824'} weight="bold" />
+        <Check size={moderateScale(20)} color={type === 'expense' ? '#FFFFFF' : theme.accentContrast} weight="bold" />
         <Text
           style={[
             styles.submitText,
-            { color: type === 'expense' ? '#FFFFFF' : '#003824' },
+            { color: type === 'expense' ? '#FFFFFF' : theme.accentContrast },
           ]}>
           {isSubmitting ? 'Recording Entry...' : 'Save Transaction'}
         </Text>
@@ -722,7 +722,7 @@ export default function AddTransactionModal() {
                 <Text
                   style={[
                     styles.modalToggleText,
-                    { color: newCatType === 'income' ? '#003824' : theme.textSecondary },
+                    { color: newCatType === 'income' ? theme.accentContrast : theme.textSecondary },
                   ]}>
                   Income
                 </Text>
@@ -911,13 +911,13 @@ export default function AddTransactionModal() {
               onPress={handleSaveCategory}>
               <Check
                 size={moderateScale(18)}
-                color={newCatType === 'expense' ? '#FFFFFF' : '#003824'}
+                color={newCatType === 'expense' ? '#FFFFFF' : theme.accentContrast}
                 weight="bold"
               />
               <Text
                 style={[
                   styles.saveCategoryBtnText,
-                  { color: newCatType === 'expense' ? '#FFFFFF' : '#003824' },
+                  { color: newCatType === 'expense' ? '#FFFFFF' : theme.accentContrast },
                 ]}>
                 Save Category
               </Text>
@@ -960,7 +960,7 @@ export default function AddTransactionModal() {
                       style={[
                         styles.calendarDayText,
                         {
-                          color: isSelected ? (type === 'expense' ? '#FFFFFF' : '#003824') : theme.text,
+                          color: isSelected ? (type === 'expense' ? '#FFFFFF' : theme.accentContrast) : theme.text,
                           fontWeight: isSelected ? '800' : '600',
                         },
                       ]}>

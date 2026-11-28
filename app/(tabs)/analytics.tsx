@@ -43,6 +43,7 @@ import {
   getTransactionsInRange,
   TransactionWithWallet,
 } from '@/db/queries';
+import { useTheme } from '@/features/theme';
 import { formatCurrency } from '@/utils/formatters';
 import { InsightsSegment, useSettings } from '@/utils/settings';
 import { fontScale, moderateScale, Radius, Spacing } from '@/utils/styling';
@@ -78,7 +79,9 @@ const MONTH_NAMES = [
 export default function AnalyticsScreen() {
   const db = useSQLiteContext();
   const { width: screenWidth } = useWindowDimensions();
-  const { isDark, theme, lastInsightsSegment, setLastInsightsSegment } = useSettings();
+  const { colors, isDark } = useTheme();
+  const theme = colors;
+  const { lastInsightsSegment, setLastInsightsSegment } = useSettings();
   const [activeSegment, setActiveSegment] = useState<InsightsSegment>(lastInsightsSegment || 'analysis');
   const horizontalScrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
 
@@ -289,7 +292,7 @@ export default function AnalyticsScreen() {
       name: 'Other',
       spent: otherSpent,
       percentage: otherPct,
-      color: '#86948A',
+      color: colors.categoryOther,
       icon: 'DotsThreeOutline',
       txCount: otherTxCount,
       note: `${others.length} smaller categories`,
@@ -299,7 +302,7 @@ export default function AnalyticsScreen() {
       donutCategories: [...top5, otherEnvelope],
       otherCategories: others,
     };
-  }, [envelopes]);
+  }, [envelopes, colors.categoryOther]);
 
   const donutSlices = useMemo(() => {
     const totalDonutSpent = donutCategories.reduce((acc, e) => acc + e.spent, 0);
@@ -320,23 +323,23 @@ export default function AnalyticsScreen() {
   }, [donutCategories, circumference]);
 
   return (
-    <SafeAreaView style={[styles.screen, { backgroundColor: theme.background }]} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
       {/* 1. TOP HEADER */}
       <View style={styles.topHeader}>
         <View style={styles.headerLeft}>
-          <View style={[styles.avatarCircle, { backgroundColor: theme.primary }]}>
-            <User size={moderateScale(18)} color="#003824" weight="bold" />
+          <View style={[styles.avatarCircle, { backgroundColor: colors.primary }]}>
+            <User size={moderateScale(18)} color={colors.accentContrast} weight="bold" />
           </View>
           <View>
-            <Text style={[styles.appBranding, { color: theme.textSecondary }]}>VAULTFLOW</Text>
-            <Text style={[styles.screenTitle, { color: theme.text }]}>Insights & Wallets</Text>
+            <Text style={[styles.appBranding, { color: colors.textSecondary }]}>VAULTFLOW</Text>
+            <Text style={[styles.screenTitle, { color: colors.text }]}>Insights & Wallets</Text>
           </View>
         </View>
 
         <Pressable
-          style={[styles.iconButton, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}
+          style={[styles.iconButton, { backgroundColor: colors.surfaceVariant }]}
           onPress={() => router.push('/(tabs)/reminders' as any)}>
-          <Bell size={moderateScale(20)} color={theme.text} weight="bold" />
+          <Bell size={moderateScale(20)} color={colors.text} weight="bold" />
         </Pressable>
       </View>
 
@@ -344,32 +347,32 @@ export default function AnalyticsScreen() {
       <View
         style={[
           styles.stickySegmentContainer,
-          { backgroundColor: theme.background, borderBottomColor: theme.border },
+          { backgroundColor: colors.background, borderBottomColor: colors.border },
         ]}>
         <View
           style={[
             styles.mainSegmentWrap,
-            { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' },
+            { backgroundColor: colors.surfaceVariant },
           ]}>
           <Pressable
             style={[
               styles.mainSegmentBtn,
               activeSegment === 'analysis' && [
                 styles.mainSegmentBtnActive,
-                { backgroundColor: isDark ? '#262A34' : '#FFFFFF' },
+                { backgroundColor: colors.card },
               ],
             ]}
             onPress={() => handleSelectSegment('analysis')}>
             <ChartDonut
               size={moderateScale(16)}
-              color={activeSegment === 'analysis' ? '#10B981' : theme.textSecondary}
+              color={activeSegment === 'analysis' ? colors.primary : colors.textSecondary}
               weight={activeSegment === 'analysis' ? 'bold' : 'regular'}
             />
             <Text
               style={[
                 styles.mainSegmentBtnText,
                 {
-                  color: activeSegment === 'analysis' ? (isDark ? '#FFFFFF' : '#0F172A') : theme.textSecondary,
+                  color: activeSegment === 'analysis' ? colors.accent : colors.textSecondary,
                   fontWeight: activeSegment === 'analysis' ? '800' : '600',
                 },
               ]}>
@@ -382,20 +385,20 @@ export default function AnalyticsScreen() {
               styles.mainSegmentBtn,
               activeSegment === 'wallets' && [
                 styles.mainSegmentBtnActive,
-                { backgroundColor: isDark ? '#262A34' : '#FFFFFF' },
+                { backgroundColor: colors.card },
               ],
             ]}
             onPress={() => handleSelectSegment('wallets')}>
             <WalletIcon
               size={moderateScale(16)}
-              color={activeSegment === 'wallets' ? '#10B981' : theme.textSecondary}
+              color={activeSegment === 'wallets' ? colors.primary : colors.textSecondary}
               weight={activeSegment === 'wallets' ? 'bold' : 'regular'}
             />
             <Text
               style={[
                 styles.mainSegmentBtnText,
                 {
-                  color: activeSegment === 'wallets' ? (isDark ? '#FFFFFF' : '#0F172A') : theme.textSecondary,
+                  color: activeSegment === 'wallets' ? colors.accent : colors.textSecondary,
                   fontWeight: activeSegment === 'wallets' ? '800' : '600',
                 },
               ]}>
@@ -422,25 +425,25 @@ export default function AnalyticsScreen() {
               <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.primary} />
             }>
             {/* 3. PERIOD SELECTOR & CLEAN SEGMENTED CONTROL */}
-            <View style={[styles.periodNavContainer, { backgroundColor: isDark ? '#181B25' : '#FFFFFF', borderColor: theme.border }]}>
+            <View style={[styles.periodNavContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <Pressable
-                style={[styles.periodNavBtn, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}
+                style={[styles.periodNavBtn, { backgroundColor: colors.surfaceVariant }]}
                 onPress={handlePrevMonth}>
-                <CaretLeft size={moderateScale(16)} color={theme.text} weight="bold" />
+                <CaretLeft size={moderateScale(16)} color={colors.text} weight="bold" />
               </Pressable>
 
               <View style={styles.periodCenter}>
-                <CalendarBlank size={moderateScale(18)} color="#10B981" weight="bold" />
-                <Text style={[styles.periodMonthText, { color: theme.text }]}>
+                <CalendarBlank size={moderateScale(18)} color={colors.primary} weight="bold" />
+                <Text style={[styles.periodMonthText, { color: colors.text }]}>
                   {MONTH_NAMES[currentMonth]} {currentYear}
                 </Text>
-                <CaretDown size={moderateScale(14)} color={theme.textSecondary} weight="bold" />
+                <CaretDown size={moderateScale(14)} color={colors.textSecondary} weight="bold" />
               </View>
 
               <Pressable
-                style={[styles.periodNavBtn, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}
+                style={[styles.periodNavBtn, { backgroundColor: colors.surfaceVariant }]}
                 onPress={handleNextMonth}>
-                <CaretRight size={moderateScale(16)} color={theme.text} weight="bold" />
+                <CaretRight size={moderateScale(16)} color={colors.text} weight="bold" />
               </Pressable>
             </View>
 
@@ -448,7 +451,7 @@ export default function AnalyticsScreen() {
             <View
               style={[
                 styles.segmentedControlWrap,
-                { backgroundColor: isDark ? '#181B25' : '#F1F5F9', borderColor: theme.border },
+                { backgroundColor: colors.surfaceVariant, borderColor: colors.border },
               ]}>
               {[
                 { id: 'thisMonth', label: 'This Month' },
@@ -464,7 +467,7 @@ export default function AnalyticsScreen() {
                       styles.segmentBtn,
                       active && [
                         styles.segmentBtnActive,
-                        { backgroundColor: isDark ? '#262A34' : '#FFFFFF' },
+                        { backgroundColor: colors.card },
                       ],
                     ]}
                     onPress={() => handleSelectHorizon(item.id as HorizonPeriod)}>
@@ -472,7 +475,7 @@ export default function AnalyticsScreen() {
                       style={[
                         styles.segmentBtnText,
                         {
-                          color: active ? (isDark ? '#FFFFFF' : '#0F172A') : theme.textSecondary,
+                          color: active ? colors.accent : colors.textSecondary,
                           fontWeight: active ? '800' : '600',
                         },
                       ]}>
@@ -488,14 +491,14 @@ export default function AnalyticsScreen() {
               style={[
                 styles.budgetHealthCard,
                 {
-                  backgroundColor: isDark ? '#181B25' : '#FFFFFF',
-                  borderColor: isOverBudget ? 'rgba(244, 63, 94, 0.45)' : theme.border,
+                  backgroundColor: colors.card,
+                  borderColor: isOverBudget ? colors.danger : colors.border,
                 },
               ]}>
               <View
                 style={[
                   styles.healthBannerGlow,
-                  { backgroundColor: isOverBudget ? 'rgba(244, 63, 94, 0.12)' : 'rgba(16, 185, 129, 0.1)' },
+                  { backgroundColor: isOverBudget ? colors.dangerLight : colors.incomeLight },
                 ]}
               />
 
@@ -504,16 +507,15 @@ export default function AnalyticsScreen() {
                   <View
                     style={[
                       styles.pulseDot,
-                      { backgroundColor: isOverBudget ? '#F43F5E' : '#10B981' },
+                      { backgroundColor: isOverBudget ? colors.danger : colors.income },
                     ]}
                   />
                   <Text
                     style={[
                       styles.healthStatusLabel,
-                      { color: isOverBudget ? '#F43F5E' : '#10B981' },
-                    ]}>
-                    BUDGET HEALTH
-                  </Text>
+                      { color: isOverBudget ? colors.danger : colors.income },
+                    ]}
+                  />
                 </View>
 
                 {/* Status Badge */}
@@ -522,28 +524,24 @@ export default function AnalyticsScreen() {
                     styles.statusBadge,
                     {
                       backgroundColor: isOverBudget
-                        ? 'rgba(244, 63, 94, 0.18)'
+                        ? colors.dangerLight
                         : budgetRatio >= 85
-                          ? 'rgba(245, 158, 11, 0.18)'
-                          : isDark
-                            ? '#31353F'
-                            : '#D1FAE5',
+                          ? colors.warningLight
+                          : colors.incomeLight,
                     },
                   ]}>
                   {isOverBudget && (
-                    <Warning size={moderateScale(12)} color="#F43F5E" weight="fill" style={{ marginRight: 3 }} />
+                    <Warning size={moderateScale(12)} color={colors.danger} weight="fill" style={{ marginRight: 3 }} />
                   )}
                   <Text
                     style={[
                       styles.statusBadgeText,
                       {
                         color: isOverBudget
-                          ? '#F43F5E'
+                          ? colors.danger
                           : budgetRatio >= 85
-                            ? '#F59E0B'
-                            : isDark
-                              ? '#4EDEA3'
-                              : '#059669',
+                            ? colors.warning
+                            : colors.income,
                         fontWeight: '800',
                       },
                     ]}>
@@ -555,9 +553,9 @@ export default function AnalyticsScreen() {
               {/* Spent vs Target Row */}
               <View style={styles.spentVsTargetRow}>
                 <View>
-                  <Text style={[styles.spentSub, { color: theme.textSecondary }]}>Total Spent</Text>
+                  <Text style={[styles.spentSub, { color: colors.textSecondary }]}>Total Spent</Text>
                   <View style={styles.spentValRow}>
-                    <Text style={[styles.spentValText, { color: isOverBudget ? '#F43F5E' : theme.text }]}>
+                    <Text style={[styles.spentValText, { color: isOverBudget ? colors.danger : colors.text }]}>
                       {formatCurrency(totalSpent)}
                     </Text>
                   </View>
@@ -574,13 +572,13 @@ export default function AnalyticsScreen() {
               </View>
 
               {/* Progress Bar with Color Warning */}
-              <View style={[styles.healthProgressTrack, { backgroundColor: isDark ? '#262A34' : '#E2E8F0' }]}>
+              <View style={[styles.healthProgressTrack, { backgroundColor: colors.surfaceVariant }]}>
                 <View
                   style={[
                     styles.healthProgressFill,
                     {
                       width: `${Math.min(100, budgetRatio)}%`,
-                      backgroundColor: isOverBudget ? '#F43F5E' : budgetRatio >= 85 ? '#F59E0B' : '#10B981',
+                      backgroundColor: isOverBudget ? colors.danger : budgetRatio >= 85 ? colors.warning : colors.income,
                     },
                   ]}
                 />
@@ -591,22 +589,22 @@ export default function AnalyticsScreen() {
                 <Text
                   style={[
                     styles.healthFooterText,
-                    { color: isOverBudget ? '#F43F5E' : theme.textSecondary, fontWeight: isOverBudget ? '700' : '500' },
+                    { color: isOverBudget ? colors.danger : colors.textSecondary, fontWeight: isOverBudget ? '700' : '500' },
                   ]}>
                   {isOverBudget
                     ? `+${formatCurrency(overageAmount)} over budget (${displayBudgetPercentage}% used)`
                     : `${formatCurrency(remainingBudget)} remaining (${100 - displayBudgetPercentage}% free)`}
                 </Text>
-                <Text style={[styles.healthCategoriesCount, { color: theme.textMuted }]}>
+                <Text style={[styles.healthCategoriesCount, { color: colors.textMuted }]}>
                   {envelopes.length} active {envelopes.length === 1 ? 'category' : 'categories'}
                 </Text>
               </View>
 
               {/* Warning State Banner if Over Budget */}
               {isOverBudget && (
-                <View style={[styles.overBudgetWarningBanner, { backgroundColor: isDark ? 'rgba(244, 63, 94, 0.12)' : '#FFE4E6' }]}>
-                  <Warning size={moderateScale(16)} color="#F43F5E" weight="bold" />
-                  <Text style={[styles.warningBannerText, { color: '#F43F5E' }]}>
+                <View style={[styles.overBudgetWarningBanner, { backgroundColor: colors.dangerLight }]}>
+                  <Warning size={moderateScale(16)} color={colors.danger} weight="bold" />
+                  <Text style={[styles.warningBannerText, { color: colors.danger }]}>
                     Spending has exceeded your target by {formatCurrency(overageAmount)}. Review allocations below to curb discretionary expenses.
                   </Text>
                 </View>
@@ -614,18 +612,18 @@ export default function AnalyticsScreen() {
             </View>
 
             {/* 4. ALLOCATION SPLIT INTERACTIVE SVG DONUT CHART (TOP 5 + OTHER) */}
-            <View style={[styles.allocationCard, { backgroundColor: isDark ? '#181B25' : '#FFFFFF', borderColor: theme.border }]}>
+            <View style={[styles.allocationCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.allocationHeader}>
                 <View>
-                  <Text style={[styles.sectionTitle, { color: theme.text }]}>Allocation Split</Text>
-                  <Text style={[styles.activitySub, { color: theme.textSecondary }]}>
+                  <Text style={[styles.sectionTitle, { color: colors.text }]}>Allocation Split</Text>
+                  <Text style={[styles.activitySub, { color: colors.textSecondary }]}>
                     Top 5 spending categories + Other
                   </Text>
                 </View>
                 <Pressable
-                  style={[styles.percentToggleBtn, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}
+                  style={[styles.percentToggleBtn, { backgroundColor: colors.surfaceVariant }]}
                   onPress={() => setSelectedLegendCategory(null)}>
-                  <Percent size={moderateScale(16)} color={theme.text} weight="bold" />
+                  <Percent size={moderateScale(16)} color={colors.text} weight="bold" />
                 </Pressable>
               </View>
 
@@ -639,7 +637,7 @@ export default function AnalyticsScreen() {
                         cx={donutSize / 2}
                         cy={donutSize / 2}
                         r={centerRadius}
-                        stroke={isDark ? '#262A34' : '#E2E8F0'}
+                        stroke={colors.surfaceVariant}
                         strokeWidth={strokeWidth}
                         fill="none"
                       />

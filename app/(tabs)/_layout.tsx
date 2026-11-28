@@ -1,17 +1,18 @@
 import { router, Tabs, usePathname } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { Bell, ChartLineUp, Plus, SquaresFour, UserGear } from 'phosphor-react-native';
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getDueSoonRemindersCount } from '@/db/queries';
-import { setDueSoonCount, useAppTheme, useDueSoonCount } from '@/utils/settings';
+import { useTheme } from '@/features/theme';
+import { setDueSoonCount, useDueSoonCount } from '@/utils/settings';
 import { moderateScale, Radius } from '@/utils/styling';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
-  const { theme } = useAppTheme();
+  const { colors, isDark } = useTheme();
   const db = useSQLiteContext();
   const pathname = usePathname();
   const dueSoonCount = useDueSoonCount();
@@ -50,19 +51,19 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: theme.primary,
-        tabBarInactiveTintColor: theme.tabIconDefault,
+        tabBarActiveTintColor: colors.tabBarActive,
+        tabBarInactiveTintColor: colors.tabBarInactive,
         tabBarStyle: {
-          backgroundColor: '#0B0E17',
-          borderTopColor: '#1C1F29',
+          backgroundColor: colors.tabBarBackground,
+          borderTopColor: colors.tabBarBorder,
           borderTopWidth: 1,
           height: tabBarHeight,
           paddingBottom: tabBarPaddingBottom,
           paddingTop: moderateScale(6),
           elevation: 12,
-          shadowColor: '#000000',
+          shadowColor: colors.shadowColor,
           shadowOffset: { width: 0, height: -4 },
-          shadowOpacity: 0.45,
+          shadowOpacity: isDark ? 0.45 : 0.08,
           shadowRadius: 16,
         },
         tabBarLabelStyle: styles.tabBarLabel,
@@ -75,7 +76,7 @@ export default function TabLayout() {
           tabBarIcon: ({ focused }) => (
             <SquaresFour
               size={moderateScale(24)}
-              color={focused ? theme.primary : theme.tabIconDefault}
+              color={focused ? colors.tabBarActive : colors.tabBarInactive}
               weight={focused ? 'fill' : 'regular'}
             />
           ),
@@ -88,7 +89,7 @@ export default function TabLayout() {
           tabBarIcon: ({ focused }) => (
             <ChartLineUp
               size={moderateScale(24)}
-              color={focused ? theme.primary : theme.tabIconDefault}
+              color={focused ? colors.tabBarActive : colors.tabBarInactive}
               weight={focused ? 'bold' : 'regular'}
             />
           ),
@@ -105,14 +106,15 @@ export default function TabLayout() {
                 style={({ pressed }) => [
                   styles.centerFab,
                   {
-                    backgroundColor: theme.primary,
-                    borderColor: '#0B0E17',
+                    backgroundColor: colors.primary,
+                    borderColor: colors.tabBarBackground,
+                    shadowColor: colors.primary,
                     transform: [{ scale: pressed ? 0.92 : 1 }],
                   },
                 ]}
                 hitSlop={moderateScale(8)}
                 onPress={handleCenterAction}>
-                <Plus size={moderateScale(26)} color="#003824" weight="bold" />
+                <Plus size={moderateScale(26)} color={colors.accentContrast} weight="bold" />
               </Pressable>
             </View>
           ),
@@ -130,15 +132,15 @@ export default function TabLayout() {
           title: 'Reminders',
           tabBarBadge: dueSoonCount > 0 ? dueSoonCount : undefined,
           tabBarBadgeStyle: {
-            backgroundColor: '#F43F5E',
-            color: '#FFFFFF',
+            backgroundColor: colors.danger,
+            color: colors.accentContrast,
             fontSize: moderateScale(10),
             fontWeight: '700',
           },
           tabBarIcon: ({ focused }) => (
             <Bell
               size={moderateScale(24)}
-              color={focused ? theme.primary : theme.tabIconDefault}
+              color={focused ? colors.tabBarActive : colors.tabBarInactive}
               weight={focused ? 'fill' : 'regular'}
             />
           ),
@@ -151,7 +153,7 @@ export default function TabLayout() {
           tabBarIcon: ({ focused }) => (
             <UserGear
               size={moderateScale(24)}
-              color={focused ? theme.primary : theme.tabIconDefault}
+              color={focused ? colors.tabBarActive : colors.tabBarInactive}
               weight={focused ? 'fill' : 'regular'}
             />
           ),
@@ -186,7 +188,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: moderateScale(3),
     elevation: 8,
-    shadowColor: '#10B981',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.45,
     shadowRadius: 10,

@@ -1,8 +1,9 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Platform } from 'react-native';
 
-import { Colors } from '@/constants/colors';
+import { useThemeStore } from '@/features/theme/themeStore';
+import { getTokens, ResolvedTheme } from '@/features/theme/tokens';
 
 export interface CurrencyConfig {
   code: string;
@@ -173,10 +174,20 @@ export function useDueSoonCount(): number {
 }
 
 /**
- * React hook to access and subscribe to settings.
+ * React hook to access and subscribe to settings and theme.
  */
 export function useSettings() {
   const [, setTick] = useState(0);
+
+  const mode = useThemeStore((s) => s.mode);
+  const systemColorScheme = useThemeStore((s) => s.systemColorScheme);
+
+  const resolvedTheme: ResolvedTheme = useMemo(() => {
+    return mode === 'system' ? systemColorScheme : mode;
+  }, [mode, systemColorScheme]);
+
+  const isDark = resolvedTheme === 'dark';
+  const theme = useMemo(() => getTokens(resolvedTheme), [resolvedTheme]);
 
   useEffect(() => {
     const listener = () => setTick((prev) => prev + 1);
@@ -187,8 +198,11 @@ export function useSettings() {
   }, []);
 
   return {
-    isDark: true,
-    theme: Colors.dark,
+    isDark,
+    theme,
+    colors: theme,
+    mode,
+    resolvedTheme,
     currency: getActiveCurrency(),
     currencies: CURRENCIES,
     lastInsightsSegment: getLastInsightsSegment(),
@@ -200,5 +214,15 @@ export function useSettings() {
 }
 
 export function useAppTheme() {
-  return { isDark: true, theme: Colors.dark };
+  const mode = useThemeStore((s) => s.mode);
+  const systemColorScheme = useThemeStore((s) => s.systemColorScheme);
+
+  const resolvedTheme: ResolvedTheme = useMemo(() => {
+    return mode === 'system' ? systemColorScheme : mode;
+  }, [mode, systemColorScheme]);
+
+  const isDark = resolvedTheme === 'dark';
+  const colors = useMemo(() => getTokens(resolvedTheme), [resolvedTheme]);
+
+  return { isDark, theme: colors, colors, mode, resolvedTheme };
 }

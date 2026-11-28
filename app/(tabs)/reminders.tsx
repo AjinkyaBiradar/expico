@@ -540,7 +540,7 @@ export default function RemindersScreen() {
       <View style={styles.topHeader}>
         <View style={styles.headerLeft}>
           <View style={[styles.avatarCircle, { backgroundColor: theme.primary }]}>
-            <Bell size={moderateScale(18)} color="#003824" weight="bold" />
+            <Bell size={moderateScale(18)} color={theme.accentContrast} weight="bold" />
           </View>
           <View>
             <Text style={[styles.appBranding, { color: theme.textSecondary }]}>VAULTFLOW</Text>
@@ -551,8 +551,8 @@ export default function RemindersScreen() {
         <Pressable
           style={[styles.addReminderHeaderBtn, { backgroundColor: theme.primary }]}
           onPress={handleOpenAddReminder}>
-          <Plus size={moderateScale(16)} color="#003824" weight="bold" />
-          <Text style={styles.addReminderHeaderBtnText}>+ New</Text>
+          <Plus size={moderateScale(16)} color={theme.accentContrast} weight="bold" />
+          <Text style={[styles.addReminderHeaderBtnText, { color: theme.accentContrast }]}>+ New</Text>
         </Pressable>
       </View>
 
@@ -651,7 +651,7 @@ export default function RemindersScreen() {
                   style={[
                     styles.filterTabText,
                     {
-                      color: isSel ? '#003824' : theme.textSecondary,
+                      color: isSel ? theme.accentContrast : theme.textSecondary,
                       fontWeight: isSel ? '700' : '500',
                     },
                   ]}>
@@ -817,7 +817,7 @@ export default function RemindersScreen() {
                         <Text
                           style={[
                             styles.segmentButtonText,
-                            { color: isSel ? '#003824' : theme.text, fontWeight: isSel ? '700' : '500' },
+                            { color: isSel ? theme.accentContrast : theme.text, fontWeight: isSel ? '700' : '500' },
                           ]}>
                           {d.label}
                         </Text>
@@ -849,7 +849,7 @@ export default function RemindersScreen() {
                         style={[
                           styles.timePresetChip,
                           {
-                            backgroundColor: isSel ? '#10B981' : isDark ? '#1C1F29' : '#F1F5F9',
+                            backgroundColor: isSel ? theme.primary : isDark ? '#1C1F29' : '#F1F5F9',
                           },
                         ]}
                         onPress={() => {
@@ -860,7 +860,7 @@ export default function RemindersScreen() {
                         <Text
                           style={[
                             styles.timePresetChipText,
-                            { color: isSel ? '#003824' : theme.text, fontWeight: isSel ? '700' : '500' },
+                            { color: isSel ? theme.accentContrast : theme.text, fontWeight: isSel ? '700' : '500' },
                           ]}>
                           {preset.label}
                         </Text>
@@ -929,7 +929,7 @@ export default function RemindersScreen() {
                         style={[
                           styles.ampmText,
                           {
-                            color: selectedPeriod === 'AM' ? '#003824' : theme.textSecondary,
+                            color: selectedPeriod === 'AM' ? theme.accentContrast : theme.textSecondary,
                             fontWeight: selectedPeriod === 'AM' ? '800' : '600',
                           },
                         ]}>
@@ -946,7 +946,7 @@ export default function RemindersScreen() {
                         style={[
                           styles.ampmText,
                           {
-                            color: selectedPeriod === 'PM' ? '#003824' : theme.textSecondary,
+                            color: selectedPeriod === 'PM' ? theme.accentContrast : theme.textSecondary,
                             fontWeight: selectedPeriod === 'PM' ? '800' : '600',
                           },
                         ]}>
@@ -973,14 +973,14 @@ export default function RemindersScreen() {
                         style={[
                           styles.segmentButton,
                           {
-                            backgroundColor: isSel ? '#10B981' : isDark ? '#1C1F29' : '#F1F5F9',
+                            backgroundColor: isSel ? theme.primary : isDark ? '#1C1F29' : '#F1F5F9',
                           },
                         ]}
                         onPress={() => setFrequency(r.id)}>
                         <Text
                           style={[
                             styles.segmentButtonText,
-                            { color: isSel ? '#003824' : theme.text, fontWeight: isSel ? '700' : '500' },
+                            { color: isSel ? theme.accentContrast : theme.text, fontWeight: isSel ? '700' : '500' },
                           ]}>
                           {r.label}
                         </Text>
@@ -1064,8 +1064,8 @@ export default function RemindersScreen() {
               ]}
               onPress={handleSaveReminder}
               disabled={isCreating}>
-              <Check size={moderateScale(20)} color="#003824" weight="bold" />
-              <Text style={styles.saveReminderBtnText}>
+              <Check size={moderateScale(20)} color={theme.accentContrast} weight="bold" />
+              <Text style={[styles.saveReminderBtnText, { color: theme.accentContrast }]}>
                 {isCreating ? 'Saving...' : 'Set Reminder'}
               </Text>
             </Pressable>

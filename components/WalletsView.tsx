@@ -9,7 +9,7 @@ import {
   Wallet as WalletIcon,
   X,
 } from 'phosphor-react-native';
-import React, { useCallback, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -44,7 +44,7 @@ interface WalletsViewProps {
 export function WalletsView({ onAddWalletPress }: WalletsViewProps) {
   const router = useRouter();
   const db = useSQLiteContext();
-  const { isDark, theme, currency } = useSettings();
+  const { theme, currency } = useSettings();
 
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -253,17 +253,17 @@ export function WalletsView({ onAddWalletPress }: WalletsViewProps) {
       <View
         style={[
           styles.netWorthCard,
-          { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF', borderColor: theme.border },
+          { backgroundColor: theme.card, borderColor: theme.border },
         ]}>
-        <View style={styles.glowTopRight} />
-        <View style={styles.glowBottomLeft} />
+        <View style={[styles.glowTopRight, { backgroundColor: theme.incomeLight }]} />
+        <View style={[styles.glowBottomLeft, { backgroundColor: theme.primaryLight }]} />
 
         <View style={styles.netWorthRowTop}>
           <Text style={[styles.netWorthLabel, { color: theme.textSecondary }]}>
             TOTAL LIQUID NET WORTH
           </Text>
-          <View style={[styles.activePill, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
-            <Text style={styles.activePillText}>Live Vault</Text>
+          <View style={[styles.activePill, { backgroundColor: theme.incomeLight }]}>
+            <Text style={[styles.activePillText, { color: theme.income }]}>Live Vault</Text>
           </View>
         </View>
 
@@ -288,8 +288,8 @@ export function WalletsView({ onAddWalletPress }: WalletsViewProps) {
               },
             ]}
             onPress={() => (onAddWalletPress ? onAddWalletPress() : router.push('/(modals)/add-wallet'))}>
-            <Plus size={moderateScale(16)} color="#003824" weight="bold" />
-            <Text style={styles.actionBtnTextPrimary}>+ New Account</Text>
+            <Plus size={moderateScale(16)} color={theme.accentContrast} weight="bold" />
+            <Text style={[styles.actionBtnTextPrimary, { color: theme.accentContrast }]}>+ New Account</Text>
           </Pressable>
 
           <Pressable
@@ -297,7 +297,7 @@ export function WalletsView({ onAddWalletPress }: WalletsViewProps) {
               styles.actionBtn,
               styles.transferBtn,
               {
-                backgroundColor: isDark ? '#262A34' : '#F1F5F9',
+                backgroundColor: theme.surfaceVariant,
                 borderColor: theme.border,
                 opacity: pressed ? 0.85 : 1,
               },
@@ -322,11 +322,11 @@ export function WalletsView({ onAddWalletPress }: WalletsViewProps) {
     <View
       style={[
         styles.walletCard,
-        { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF', borderColor: theme.border },
+        { backgroundColor: theme.card, borderColor: theme.border },
       ]}>
       <View style={styles.walletMainRow}>
-        <View style={[styles.walletIconWrap, { backgroundColor: isDark ? '#262A34' : '#F1F5F9' }]}>
-          <CategoryIcon name={item.icon} size={moderateScale(22)} color="#10B981" />
+        <View style={[styles.walletIconWrap, { backgroundColor: theme.surfaceVariant }]}>
+          <CategoryIcon name={item.icon} size={moderateScale(22)} color={theme.primary} />
         </View>
 
         <View style={styles.walletDetails}>
@@ -349,28 +349,28 @@ export function WalletsView({ onAddWalletPress }: WalletsViewProps) {
         </View>
       </View>
 
-      <View style={[styles.walletCardDivider, { backgroundColor: isDark ? '#262A34' : '#F1F5F9' }]} />
+      <View style={[styles.walletCardDivider, { backgroundColor: theme.borderSubtle }]} />
 
       <View style={styles.walletActionsRow}>
         <Pressable
           style={({ pressed }) => [
             styles.addMoneyBtn,
             {
-              backgroundColor: isDark ? 'rgba(16, 185, 129, 0.12)' : '#ECFDF5',
-              borderColor: isDark ? 'rgba(16, 185, 129, 0.35)' : '#A7F3D0',
+              backgroundColor: theme.incomeLight,
+              borderColor: theme.income,
               opacity: pressed ? 0.75 : 1,
             },
           ]}
           onPress={() => handleOpenAddMoney(item)}>
-          <PlusCircle size={moderateScale(16)} color="#10B981" weight="bold" />
-          <Text style={styles.addMoneyBtnText}>+ Deposit Money</Text>
+          <PlusCircle size={moderateScale(16)} color={theme.income} weight="bold" />
+          <Text style={[styles.addMoneyBtnText, { color: theme.income }]}>+ Deposit Money</Text>
         </Pressable>
       </View>
     </View>
   );
 
   const renderEmpty = () => (
-    <View style={[styles.emptyContainer, { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF' }]}>
+    <View style={[styles.emptyContainer, { backgroundColor: theme.card }]}>
       <WalletIcon size={moderateScale(44)} color={theme.textMuted} />
       <Text style={[styles.emptyTitle, { color: theme.text }]}>No accounts found</Text>
       <Text style={[styles.emptySubtitle, { color: theme.textMuted }]}>
@@ -399,11 +399,11 @@ export function WalletsView({ onAddWalletPress }: WalletsViewProps) {
         transparent
         animationType="slide"
         onRequestClose={handleCloseAddMoney}>
-        <Pressable style={styles.modalOverlay} onPress={handleCloseAddMoney}>
+        <Pressable style={[styles.modalOverlay, { backgroundColor: theme.overlay }]} onPress={handleCloseAddMoney}>
           <Pressable
-            style={[styles.modalSheet, { backgroundColor: isDark ? '#262A34' : '#FFFFFF' }]}
+            style={[styles.modalSheet, { backgroundColor: theme.surfaceElevated }]}
             onPress={(e) => e.stopPropagation()}>
-            <View style={styles.sheetHandle} />
+            <View style={[styles.sheetHandle, { backgroundColor: theme.border }]} />
 
             <View style={styles.sheetHeader}>
               <View>
@@ -413,13 +413,13 @@ export function WalletsView({ onAddWalletPress }: WalletsViewProps) {
                 </Text>
               </View>
               <Pressable
-                style={[styles.closeBtn, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}
+                style={[styles.closeBtn, { backgroundColor: theme.surfaceVariant }]}
                 onPress={handleCloseAddMoney}>
                 <X size={moderateScale(18)} color={theme.text} weight="bold" />
               </Pressable>
             </View>
 
-            <View style={[styles.currencyInputBox, { backgroundColor: isDark ? '#1C1F29' : '#F8FAFC' }]}>
+            <View style={[styles.currencyInputBox, { backgroundColor: theme.surfaceVariant }]}>
               <Text style={[styles.currencySymbol, { color: theme.text }]}>{currency.symbol}</Text>
               <TextInput
                 style={[styles.modalAmountInput, { color: theme.text }]}
@@ -438,7 +438,7 @@ export function WalletsView({ onAddWalletPress }: WalletsViewProps) {
                   key={amt}
                   style={[
                     styles.quickChip,
-                    { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' },
+                    { backgroundColor: theme.surfaceVariant },
                   ]}
                   onPress={() => {
                     const cur = parseFloat(addAmount) || 0;
@@ -462,14 +462,14 @@ export function WalletsView({ onAddWalletPress }: WalletsViewProps) {
                       style={[
                         styles.sourceChip,
                         {
-                          backgroundColor: isSel ? '#10B981' : isDark ? '#1C1F29' : '#F1F5F9',
+                          backgroundColor: isSel ? theme.primary : theme.surfaceVariant,
                         },
                       ]}
                       onPress={() => setSelectedIncomeSource(src)}>
                       <Text
                         style={[
                           styles.sourceChipText,
-                          { color: isSel ? '#003824' : theme.text, fontWeight: isSel ? '700' : '500' },
+                          { color: isSel ? theme.accentContrast : theme.text, fontWeight: isSel ? '700' : '500' },
                         ]}>
                         {src}
                       </Text>
@@ -485,7 +485,7 @@ export function WalletsView({ onAddWalletPress }: WalletsViewProps) {
                 style={[
                   styles.noteInput,
                   {
-                    backgroundColor: isDark ? '#1C1F29' : '#F8FAFC',
+                    backgroundColor: theme.surfaceVariant,
                     color: theme.text,
                     borderColor: theme.border,
                   },
@@ -500,12 +500,12 @@ export function WalletsView({ onAddWalletPress }: WalletsViewProps) {
             <Pressable
               style={({ pressed }) => [
                 styles.confirmDepositBtn,
-                { backgroundColor: '#10B981', opacity: pressed || isAddingMoney ? 0.8 : 1 },
+                { backgroundColor: theme.primary, opacity: pressed || isAddingMoney ? 0.8 : 1 },
               ]}
               onPress={handleConfirmAddMoney}
               disabled={isAddingMoney}>
-              <Check size={moderateScale(20)} color="#003824" weight="bold" />
-              <Text style={styles.confirmDepositBtnText}>
+              <Check size={moderateScale(20)} color={theme.accentContrast} weight="bold" />
+              <Text style={[styles.confirmDepositBtnText, { color: theme.accentContrast }]}>
                 {isAddingMoney ? 'Depositing...' : 'Confirm Deposit'}
               </Text>
             </Pressable>
@@ -519,11 +519,11 @@ export function WalletsView({ onAddWalletPress }: WalletsViewProps) {
         transparent
         animationType="slide"
         onRequestClose={() => setIsTransferModalOpen(false)}>
-        <Pressable style={styles.modalOverlay} onPress={() => setIsTransferModalOpen(false)}>
+        <Pressable style={[styles.modalOverlay, { backgroundColor: theme.overlay }]} onPress={() => setIsTransferModalOpen(false)}>
           <Pressable
-            style={[styles.modalSheet, { backgroundColor: isDark ? '#262A34' : '#FFFFFF' }]}
+            style={[styles.modalSheet, { backgroundColor: theme.surfaceElevated }]}
             onPress={(e) => e.stopPropagation()}>
-            <View style={styles.sheetHandle} />
+            <View style={[styles.sheetHandle, { backgroundColor: theme.border }]} />
 
             <View style={styles.sheetHeader}>
               <View>
@@ -533,7 +533,7 @@ export function WalletsView({ onAddWalletPress }: WalletsViewProps) {
                 </Text>
               </View>
               <Pressable
-                style={[styles.closeBtn, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}
+                style={[styles.closeBtn, { backgroundColor: theme.surfaceVariant }]}
                 onPress={() => setIsTransferModalOpen(false)}>
                 <X size={moderateScale(18)} color={theme.text} weight="bold" />
               </Pressable>
@@ -551,15 +551,15 @@ export function WalletsView({ onAddWalletPress }: WalletsViewProps) {
                       style={[
                         styles.accountSelectChip,
                         {
-                          backgroundColor: isSel ? 'rgba(239, 68, 68, 0.15)' : isDark ? '#1C1F29' : '#F1F5F9',
-                          borderColor: isSel ? '#EF4444' : 'transparent',
+                          backgroundColor: isSel ? theme.dangerLight : theme.surfaceVariant,
+                          borderColor: isSel ? theme.danger : 'transparent',
                         },
                       ]}
                       onPress={() => setTransferFromId(w.id)}>
                       <Text
                         style={[
                           styles.accountSelectChipText,
-                          { color: isSel ? '#EF4444' : theme.text, fontWeight: isSel ? '700' : '500' },
+                          { color: isSel ? theme.danger : theme.text, fontWeight: isSel ? '700' : '500' },
                         ]}>
                         {w.name} ({formatCurrency(w.current_balance)})
                       </Text>
@@ -581,15 +581,15 @@ export function WalletsView({ onAddWalletPress }: WalletsViewProps) {
                       style={[
                         styles.accountSelectChip,
                         {
-                          backgroundColor: isSel ? 'rgba(16, 185, 129, 0.15)' : isDark ? '#1C1F29' : '#F1F5F9',
-                          borderColor: isSel ? '#10B981' : 'transparent',
+                          backgroundColor: isSel ? theme.incomeLight : theme.surfaceVariant,
+                          borderColor: isSel ? theme.income : 'transparent',
                         },
                       ]}
                       onPress={() => setTransferToId(w.id)}>
                       <Text
                         style={[
                           styles.accountSelectChipText,
-                          { color: isSel ? '#10B981' : theme.text, fontWeight: isSel ? '700' : '500' },
+                          { color: isSel ? theme.income : theme.text, fontWeight: isSel ? '700' : '500' },
                         ]}>
                         {w.name} ({formatCurrency(w.current_balance)})
                       </Text>
@@ -602,7 +602,7 @@ export function WalletsView({ onAddWalletPress }: WalletsViewProps) {
             {/* Amount */}
             <View style={styles.inputGroup}>
               <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>TRANSFER AMOUNT</Text>
-              <View style={[styles.currencyInputBox, { backgroundColor: isDark ? '#1C1F29' : '#F8FAFC' }]}>
+              <View style={[styles.currencyInputBox, { backgroundColor: theme.surfaceVariant }]}>
                 <Text style={[styles.currencySymbol, { color: theme.text }]}>{currency.symbol}</Text>
                 <TextInput
                   style={[styles.modalAmountInput, { color: theme.text }]}
@@ -620,7 +620,7 @@ export function WalletsView({ onAddWalletPress }: WalletsViewProps) {
               {[500, 1000, 2000, 5000].map((amt) => (
                 <Pressable
                   key={'t_amt_' + amt}
-                  style={[styles.quickChip, { backgroundColor: isDark ? '#1C1F29' : '#F1F5F9' }]}
+                  style={[styles.quickChip, { backgroundColor: theme.surfaceVariant }]}
                   onPress={() => {
                     const cur = parseFloat(transferAmount) || 0;
                     setTransferAmount((cur + amt).toString());
@@ -639,7 +639,7 @@ export function WalletsView({ onAddWalletPress }: WalletsViewProps) {
                 style={[
                   styles.noteInput,
                   {
-                    backgroundColor: isDark ? '#1C1F29' : '#F8FAFC',
+                    backgroundColor: theme.surfaceVariant,
                     color: theme.text,
                     borderColor: theme.border,
                   },
@@ -658,8 +658,8 @@ export function WalletsView({ onAddWalletPress }: WalletsViewProps) {
               ]}
               onPress={handleConfirmTransfer}
               disabled={isTransferring}>
-              <ArrowsLeftRight size={moderateScale(20)} color="#003824" weight="bold" />
-              <Text style={styles.confirmDepositBtnText}>
+              <ArrowsLeftRight size={moderateScale(20)} color={theme.accentContrast} weight="bold" />
+              <Text style={[styles.confirmDepositBtnText, { color: theme.accentContrast }]}>
                 {isTransferring ? 'Transferring...' : 'Execute Transfer'}
               </Text>
             </Pressable>
@@ -697,7 +697,6 @@ const styles = StyleSheet.create({
     width: moderateScale(120),
     height: moderateScale(120),
     borderRadius: Radius.full,
-    backgroundColor: 'rgba(16, 185, 129, 0.12)',
   },
   glowBottomLeft: {
     position: 'absolute',
@@ -706,7 +705,6 @@ const styles = StyleSheet.create({
     width: moderateScale(100),
     height: moderateScale(100),
     borderRadius: Radius.full,
-    backgroundColor: 'rgba(59, 130, 246, 0.08)',
   },
   netWorthRowTop: {
     flexDirection: 'row',
@@ -726,7 +724,6 @@ const styles = StyleSheet.create({
   },
   activePillText: {
     fontSize: fontScale(10),
-    color: '#10B981',
     fontWeight: '700',
   },
   netWorthAmount: {
@@ -761,7 +758,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   actionBtnTextPrimary: {
-    color: '#003824',
     fontSize: fontScale(13),
     fontWeight: '700',
   },
@@ -842,7 +838,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   addMoneyBtnText: {
-    color: '#10B981',
     fontSize: fontScale(12),
     fontWeight: '700',
   },
@@ -865,7 +860,6 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     justifyContent: 'flex-end',
   },
   modalSheet: {
@@ -878,7 +872,6 @@ const styles = StyleSheet.create({
     width: moderateScale(40),
     height: moderateScale(4),
     borderRadius: Radius.full,
-    backgroundColor: '#6B7280',
     alignSelf: 'center',
     marginBottom: Spacing.lg,
   },
@@ -986,7 +979,6 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
   },
   confirmDepositBtnText: {
-    color: '#003824',
     fontSize: fontScale(15),
     fontWeight: '700',
   },
