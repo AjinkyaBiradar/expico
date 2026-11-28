@@ -380,7 +380,7 @@ export function WalletsView({ onAddWalletPress }: WalletsViewProps) {
   );
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
       <FlatList
         data={wallets}
         keyExtractor={(item) => item.id}

@@ -2,6 +2,7 @@ import { NavigationBar } from 'expo-navigation-bar';
 import { Stack } from 'expo-router';
 import { SQLiteProvider } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
+import * as SystemUI from 'expo-system-ui';
 import React, { Suspense, useEffect } from 'react';
 import { ActivityIndicator, Platform, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -21,7 +22,7 @@ function LoadingScreen({ isDark, primaryColor, textColor }: { isDark: boolean; p
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: isDark ? '#0F131C' : '#FFFFFF',
+        backgroundColor: isDark ? '#0F131C' : '#F8FAFC',
       }}>
       <ActivityIndicator size="large" color={primaryColor} />
       <Text
@@ -44,6 +45,10 @@ export default function RootLayout() {
     initSettingsAsync();
   }, []);
 
+  useEffect(() => {
+    SystemUI.setBackgroundColorAsync(isDark ? '#0F131C' : '#F8FAFC').catch(() => {});
+  }, [isDark]);
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <Suspense fallback={<LoadingScreen isDark={isDark} primaryColor={theme.primary} textColor={theme.textSecondary} />}>
@@ -57,7 +62,7 @@ export default function RootLayout() {
               headerStyle: { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF' },
               headerTintColor: theme.text,
               headerTitleStyle: { color: theme.text, fontWeight: '700' },
-              contentStyle: { backgroundColor: theme.surface },
+              contentStyle: { backgroundColor: theme.background },
             }}>
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen

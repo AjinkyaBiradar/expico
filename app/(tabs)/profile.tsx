@@ -87,7 +87,7 @@ export default function ProfileScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.screen, { backgroundColor: theme.surface }]} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={[styles.screen, { backgroundColor: theme.background }]} edges={['top', 'left', 'right']}>
       {Platform.OS === 'android' && (
         <NavigationBar hidden={isFullScreen} style={isDark ? 'light' : 'dark'} />
       )}
@@ -159,7 +159,7 @@ export default function ProfileScreen() {
               </View>
             </View>
 
-            <View style={[styles.themePillGroup, { backgroundColor: isDark ? '#12151E' : '#F1F5F9', borderColor: theme.border }]}>
+            <View style={[styles.themePillGroup, { backgroundColor: isDark ? '#12151E' : '#E2E8F0', borderColor: theme.border }]}>
               <Pressable
                 style={[
                   styles.themePill,

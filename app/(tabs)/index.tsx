@@ -291,7 +291,7 @@ export default function HomeScreen() {
 
 
   return (
-    <SafeAreaView style={[styles.screen, { backgroundColor: theme.surface }]} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={[styles.screen, { backgroundColor: theme.background }]} edges={['top', 'left', 'right']}>
       {/* 1. VAULTFLOW TOP HEADER */}
       <View style={styles.topHeader}>
         <View style={styles.headerLeft}>

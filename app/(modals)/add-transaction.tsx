@@ -328,7 +328,7 @@ export default function AddTransactionModal() {
 
   return (
     <ScrollView
-      style={[styles.container, { backgroundColor: theme.surface }]}
+      style={[styles.container, { backgroundColor: theme.background }]}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled">
       {/* Modal Top Header */}

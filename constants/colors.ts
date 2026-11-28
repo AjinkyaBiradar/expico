@@ -33,7 +33,7 @@ export const Colors = {
     primaryLight: 'rgba(78, 222, 163, 0.15)',
     primaryFixed: '#6FFBBE',
     background: '#0F131C',
-    surface: '#0F131C',
+    surface: '#1C1F29',
     surfaceVariant: '#31353F',
     surfaceContainerLowest: '#0A0E17',
     surfaceContainerLow: '#181B25',

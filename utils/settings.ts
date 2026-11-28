@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import * as SystemUI from 'expo-system-ui';
 import { useEffect, useState } from 'react';
-import { Appearance, useColorScheme } from 'react-native';
+import { Appearance, Platform, useColorScheme } from 'react-native';
 
 import { Colors } from '@/constants/colors';
 
@@ -35,13 +36,34 @@ interface AppSettings {
   lastInsightsSegment?: InsightsSegment;
 }
 
-const SETTINGS_FILE = `${FileSystem.documentDirectory || ''}vaultflow_settings.json`;
+const SETTINGS_KEY = 'vaultflow_settings';
+
+function getSettingsFilePath(): string | null {
+  if (Platform.OS === 'web') return null;
+  const dir = FileSystem.documentDirectory || FileSystem.cacheDirectory;
+  return dir ? `${dir}vaultflow_settings.json` : null;
+}
 
 let currentSettings: AppSettings = {
   currencyCode: 'INR',
   themePreference: 'dark',
   lastInsightsSegment: 'analysis',
 };
+
+// If on web, attempt eager synchronous restoration from localStorage
+if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+  try {
+    const raw = window.localStorage.getItem(SETTINGS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<AppSettings>;
+      if (parsed.currencyCode) currentSettings.currencyCode = parsed.currencyCode;
+      if (parsed.themePreference) currentSettings.themePreference = parsed.themePreference;
+      if (parsed.lastInsightsSegment) currentSettings.lastInsightsSegment = parsed.lastInsightsSegment;
+    }
+  } catch {
+    // ignore
+  }
+}
 
 const listeners = new Set<() => void>();
 
@@ -54,10 +76,25 @@ function notifyListeners() {
  */
 export async function initSettingsAsync(): Promise<void> {
   try {
-    const fileInfo = await FileSystem.getInfoAsync(SETTINGS_FILE);
-    if (fileInfo.exists) {
-      const content = await FileSystem.readAsStringAsync(SETTINGS_FILE);
-      const parsed = JSON.parse(content) as Partial<AppSettings>;
+    let parsed: Partial<AppSettings> | null = null;
+
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const raw = window.localStorage.getItem(SETTINGS_KEY);
+        if (raw) parsed = JSON.parse(raw);
+      }
+    } else {
+      const filePath = getSettingsFilePath();
+      if (filePath) {
+        const fileInfo = await FileSystem.getInfoAsync(filePath);
+        if (fileInfo.exists) {
+          const content = await FileSystem.readAsStringAsync(filePath);
+          parsed = JSON.parse(content);
+        }
+      }
+    }
+
+    if (parsed) {
       if (parsed.currencyCode) {
         currentSettings.currencyCode = parsed.currencyCode;
       }
@@ -80,8 +117,18 @@ export async function initSettingsAsync(): Promise<void> {
 }
 
 async function persistSettings(): Promise<void> {
+  const jsonStr = JSON.stringify(currentSettings);
   try {
-    await FileSystem.writeAsStringAsync(SETTINGS_FILE, JSON.stringify(currentSettings));
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem(SETTINGS_KEY, jsonStr);
+      }
+    } else {
+      const filePath = getSettingsFilePath();
+      if (filePath) {
+        await FileSystem.writeAsStringAsync(filePath, jsonStr);
+      }
+    }
   } catch (err) {
     console.warn('[Settings] Failed to save settings to storage:', err);
   }
@@ -113,6 +160,11 @@ export async function setThemePreferenceAsync(theme: ThemePreference): Promise<v
   } else {
     Appearance.setColorScheme('unspecified');
   }
+
+  const isDark =
+    theme === 'dark' || (theme === 'system' && Appearance.getColorScheme() === 'dark');
+  SystemUI.setBackgroundColorAsync(isDark ? '#0F131C' : '#F8FAFC').catch(() => {});
+
   await persistSettings();
   notifyListeners();
 }

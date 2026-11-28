@@ -320,7 +320,7 @@ export default function AnalyticsScreen() {
   }, [donutCategories, circumference]);
 
   return (
-    <SafeAreaView style={[styles.screen, { backgroundColor: theme.surface }]} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={[styles.screen, { backgroundColor: theme.background }]} edges={['top', 'left', 'right']}>
       {/* 1. TOP HEADER */}
       <View style={styles.topHeader}>
         <View style={styles.headerLeft}>
@@ -344,7 +344,7 @@ export default function AnalyticsScreen() {
       <View
         style={[
           styles.stickySegmentContainer,
-          { backgroundColor: theme.surface, borderBottomColor: theme.border },
+          { backgroundColor: theme.background, borderBottomColor: theme.border },
         ]}>
         <View
           style={[

@@ -12,7 +12,7 @@ export default function ModalsLayout() {
         headerStyle: { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF' },
         headerTintColor: theme.text,
         headerTitleStyle: { color: theme.text, fontWeight: '700' },
-        contentStyle: { backgroundColor: theme.surface },
+        contentStyle: { backgroundColor: theme.background },
       }}>
       <Stack.Screen
         name="add-transaction"
