@@ -4,15 +4,15 @@ import React from 'react';
 import { useAppTheme } from '@/utils/settings';
 
 export default function ModalsLayout() {
-  const { isDark, theme } = useAppTheme();
+  const { theme } = useAppTheme();
 
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF' },
+        headerStyle: { backgroundColor: '#1C1F29' },
         headerTintColor: theme.text,
         headerTitleStyle: { color: theme.text, fontWeight: '700' },
-        contentStyle: { backgroundColor: theme.background },
+        contentStyle: { backgroundColor: '#0F131C' },
       }}>
       <Stack.Screen
         name="add-transaction"

@@ -11,7 +11,7 @@ import { moderateScale, Radius } from '@/utils/styling';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
-  const { isDark, theme } = useAppTheme();
+  const { theme } = useAppTheme();
   const db = useSQLiteContext();
   const pathname = usePathname();
   const dueSoonCount = useDueSoonCount();
@@ -53,8 +53,8 @@ export default function TabLayout() {
         tabBarActiveTintColor: theme.primary,
         tabBarInactiveTintColor: theme.tabIconDefault,
         tabBarStyle: {
-          backgroundColor: isDark ? '#0B0E17' : '#FFFFFF',
-          borderTopColor: isDark ? '#1C1F29' : '#E2E8F0',
+          backgroundColor: '#0B0E17',
+          borderTopColor: '#1C1F29',
           borderTopWidth: 1,
           height: tabBarHeight,
           paddingBottom: tabBarPaddingBottom,
@@ -62,7 +62,7 @@ export default function TabLayout() {
           elevation: 12,
           shadowColor: '#000000',
           shadowOffset: { width: 0, height: -4 },
-          shadowOpacity: isDark ? 0.45 : 0.06,
+          shadowOpacity: 0.45,
           shadowRadius: 16,
         },
         tabBarLabelStyle: styles.tabBarLabel,
@@ -106,7 +106,7 @@ export default function TabLayout() {
                   styles.centerFab,
                   {
                     backgroundColor: theme.primary,
-                    borderColor: isDark ? '#0B0E17' : '#FFFFFF',
+                    borderColor: '#0B0E17',
                     transform: [{ scale: pressed ? 0.92 : 1 }],
                   },
                 ]}

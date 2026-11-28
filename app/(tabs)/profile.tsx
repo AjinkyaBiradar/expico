@@ -10,11 +10,9 @@ import {
   EyeSlash,
   Globe,
   LockKey,
-  Moon,
   Plus,
   ShieldCheck,
   Sparkle,
-  Sun,
   Trash,
   User,
   Wallet as WalletIcon,
@@ -41,7 +39,7 @@ import { fontScale, moderateScale, Radius, Spacing } from '@/utils/styling';
 export default function ProfileScreen() {
   const router = useRouter();
   const db = useSQLiteContext();
-  const { isDark, theme, currency, currencies, themePreference, setCurrency, setThemePreference } = useSettings();
+  const { isDark, theme, currency, currencies, setCurrency } = useSettings();
 
   const [isFullScreen, setIsFullScreen] = useState(true);
   const [isBiometricEnabled, setIsBiometricEnabled] = useState(false);
@@ -134,79 +132,8 @@ export default function ProfileScreen() {
         </View>
 
         {/* Display & Screen Settings */}
-        <View style={[styles.sectionCard, { backgroundColor: isDark ? '#181B25' : '#FFFFFF', borderColor: theme.border }]}>
+        <View style={[styles.sectionCard, { backgroundColor: '#181B25', borderColor: theme.border }]}>
           <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>DISPLAY & EXPERIENCE</Text>
-
-          {/* Theme Button Row with Permanent Persistence */}
-          <View style={styles.settingRow}>
-            <View style={styles.settingLeft}>
-              <View style={[styles.iconWrap, { backgroundColor: isDark ? 'rgba(139, 92, 246, 0.15)' : 'rgba(245, 158, 11, 0.15)' }]}>
-                {isDark ? (
-                  <Moon size={moderateScale(18)} color="#8B5CF6" weight="fill" />
-                ) : (
-                  <Sun size={moderateScale(18)} color="#F59E0B" weight="fill" />
-                )}
-              </View>
-              <View>
-                <Text style={[styles.settingLabel, { color: theme.text }]}>App Theme</Text>
-                <Text style={[styles.settingDesc, { color: theme.textSecondary }]}>
-                  {themePreference === 'dark'
-                    ? 'Permanent Dark mode'
-                    : themePreference === 'light'
-                    ? 'Permanent Light mode'
-                    : 'System theme'}
-                </Text>
-              </View>
-            </View>
-
-            <View style={[styles.themePillGroup, { backgroundColor: isDark ? '#12151E' : '#E2E8F0', borderColor: theme.border }]}>
-              <Pressable
-                style={[
-                  styles.themePill,
-                  themePreference === 'light' && [styles.themePillActive, { backgroundColor: '#FFFFFF' }],
-                ]}
-                onPress={() => setThemePreference('light')}>
-                <Sun
-                  size={moderateScale(14)}
-                  color={themePreference === 'light' ? '#F59E0B' : theme.textMuted}
-                  weight={themePreference === 'light' ? 'fill' : 'regular'}
-                />
-                <Text
-                  style={[
-                    styles.themePillText,
-                    {
-                      color: themePreference === 'light' ? '#0F172A' : theme.textMuted,
-                      fontWeight: themePreference === 'light' ? '800' : '600',
-                    },
-                  ]}>
-                  Light
-                </Text>
-              </Pressable>
-
-              <Pressable
-                style={[
-                  styles.themePill,
-                  themePreference === 'dark' && [styles.themePillActive, { backgroundColor: '#262A34' }],
-                ]}
-                onPress={() => setThemePreference('dark')}>
-                <Moon
-                  size={moderateScale(14)}
-                  color={themePreference === 'dark' ? '#A78BFA' : theme.textMuted}
-                  weight={themePreference === 'dark' ? 'fill' : 'regular'}
-                />
-                <Text
-                  style={[
-                    styles.themePillText,
-                    {
-                      color: themePreference === 'dark' ? '#FFFFFF' : theme.textMuted,
-                      fontWeight: themePreference === 'dark' ? '800' : '600',
-                    },
-                  ]}>
-                  Dark
-                </Text>
-              </Pressable>
-            </View>
-          </View>
 
           <View style={styles.settingRow}>
             <View style={styles.settingLeft}>
@@ -634,31 +561,6 @@ const styles = StyleSheet.create({
   actionBtnText: {
     fontSize: fontScale(13),
     fontWeight: '700',
-  },
-  themePillGroup: {
-    flexDirection: 'row',
-    borderRadius: Radius.full,
-    padding: moderateScale(3),
-    borderWidth: 1,
-    gap: moderateScale(2),
-  },
-  themePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: moderateScale(4),
-    paddingHorizontal: moderateScale(10),
-    paddingVertical: moderateScale(6),
-    borderRadius: Radius.full,
-  },
-  themePillActive: {
-    elevation: 2,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.15,
-    shadowRadius: 2,
-  },
-  themePillText: {
-    fontSize: fontScale(12),
   },
   footerText: {
     textAlign: 'center',

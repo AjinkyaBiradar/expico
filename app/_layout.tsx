@@ -2,7 +2,6 @@ import { NavigationBar } from 'expo-navigation-bar';
 import { Stack } from 'expo-router';
 import { SQLiteProvider } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
-import * as SystemUI from 'expo-system-ui';
 import React, { Suspense, useEffect } from 'react';
 import { ActivityIndicator, Platform, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -15,14 +14,14 @@ export {
   ErrorBoundary,
 } from 'expo-router';
 
-function LoadingScreen({ isDark, primaryColor, textColor }: { isDark: boolean; primaryColor: string; textColor: string }) {
+function LoadingScreen({ primaryColor, textColor }: { primaryColor: string; textColor: string }) {
   return (
     <View
       style={{
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: isDark ? '#0F131C' : '#F8FAFC',
+        backgroundColor: '#0F131C',
       }}>
       <ActivityIndicator size="large" color={primaryColor} />
       <Text
@@ -39,30 +38,26 @@ function LoadingScreen({ isDark, primaryColor, textColor }: { isDark: boolean; p
 }
 
 export default function RootLayout() {
-  const { isDark, theme } = useAppTheme();
+  const { theme } = useAppTheme();
 
   useEffect(() => {
     initSettingsAsync();
   }, []);
 
-  useEffect(() => {
-    SystemUI.setBackgroundColorAsync(isDark ? '#0F131C' : '#F8FAFC').catch(() => {});
-  }, [isDark]);
-
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <Suspense fallback={<LoadingScreen isDark={isDark} primaryColor={theme.primary} textColor={theme.textSecondary} />}>
+      <Suspense fallback={<LoadingScreen primaryColor={theme.primary} textColor={theme.textSecondary} />}>
         <SQLiteProvider databaseName="expico.db" onInit={migrateDbIfNeeded} useSuspense>
-          <StatusBar style={isDark ? 'light' : 'dark'} />
+          <StatusBar style="light" />
           {Platform.OS === 'android' && (
-            <NavigationBar hidden={true} style={isDark ? 'light' : 'dark'} />
+            <NavigationBar hidden={true} style="light" />
           )}
           <Stack
             screenOptions={{
-              headerStyle: { backgroundColor: isDark ? '#1C1F29' : '#FFFFFF' },
+              headerStyle: { backgroundColor: '#1C1F29' },
               headerTintColor: theme.text,
               headerTitleStyle: { color: theme.text, fontWeight: '700' },
-              contentStyle: { backgroundColor: theme.background },
+              contentStyle: { backgroundColor: '#0F131C' },
             }}>
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen

@@ -1,7 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import * as SystemUI from 'expo-system-ui';
 import { useEffect, useState } from 'react';
-import { Appearance, Platform, useColorScheme } from 'react-native';
+import { Platform } from 'react-native';
 
 import { Colors } from '@/constants/colors';
 
@@ -27,12 +26,10 @@ export const CURRENCIES: CurrencyConfig[] = [
   { code: 'BRL', symbol: 'R$', name: 'Brazilian Real', locale: 'pt-BR' },
 ];
 
-export type ThemePreference = 'system' | 'light' | 'dark';
 export type InsightsSegment = 'analysis' | 'wallets';
 
 interface AppSettings {
   currencyCode: string;
-  themePreference: ThemePreference;
   lastInsightsSegment?: InsightsSegment;
 }
 
@@ -46,7 +43,6 @@ function getSettingsFilePath(): string | null {
 
 let currentSettings: AppSettings = {
   currencyCode: 'INR',
-  themePreference: 'dark',
   lastInsightsSegment: 'analysis',
 };
 
@@ -57,7 +53,6 @@ if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorag
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<AppSettings>;
       if (parsed.currencyCode) currentSettings.currencyCode = parsed.currencyCode;
-      if (parsed.themePreference) currentSettings.themePreference = parsed.themePreference;
       if (parsed.lastInsightsSegment) currentSettings.lastInsightsSegment = parsed.lastInsightsSegment;
     }
   } catch {
@@ -98,14 +93,6 @@ export async function initSettingsAsync(): Promise<void> {
       if (parsed.currencyCode) {
         currentSettings.currencyCode = parsed.currencyCode;
       }
-      if (parsed.themePreference) {
-        currentSettings.themePreference = parsed.themePreference;
-        if (parsed.themePreference === 'light' || parsed.themePreference === 'dark') {
-          Appearance.setColorScheme(parsed.themePreference);
-        } else {
-          Appearance.setColorScheme('unspecified');
-        }
-      }
       if (parsed.lastInsightsSegment) {
         currentSettings.lastInsightsSegment = parsed.lastInsightsSegment;
       }
@@ -145,26 +132,6 @@ export function getActiveCurrencySymbol(): string {
 
 export async function setActiveCurrencyAsync(code: string): Promise<void> {
   currentSettings.currencyCode = code;
-  await persistSettings();
-  notifyListeners();
-}
-
-export function getThemePreference(): ThemePreference {
-  return currentSettings.themePreference;
-}
-
-export async function setThemePreferenceAsync(theme: ThemePreference): Promise<void> {
-  currentSettings.themePreference = theme;
-  if (theme === 'light' || theme === 'dark') {
-    Appearance.setColorScheme(theme);
-  } else {
-    Appearance.setColorScheme('unspecified');
-  }
-
-  const isDark =
-    theme === 'dark' || (theme === 'system' && Appearance.getColorScheme() === 'dark');
-  SystemUI.setBackgroundColorAsync(isDark ? '#0F131C' : '#F8FAFC').catch(() => {});
-
   await persistSettings();
   notifyListeners();
 }
@@ -219,28 +186,19 @@ export function useSettings() {
     };
   }, []);
 
-  const systemColorScheme = useColorScheme();
-  const themePref = getThemePreference();
-  const isDark =
-    themePref === 'dark' || (themePref === 'system' && systemColorScheme === 'dark');
-  const theme = isDark ? Colors.dark : Colors.light;
-
   return {
-    isDark,
-    theme,
+    isDark: true,
+    theme: Colors.dark,
     currency: getActiveCurrency(),
     currencies: CURRENCIES,
-    themePreference: themePref,
     lastInsightsSegment: getLastInsightsSegment(),
     dueSoonCount: dueSoonRemindersCount,
     setCurrency: setActiveCurrencyAsync,
-    setThemePreference: setThemePreferenceAsync,
     setLastInsightsSegment: setLastInsightsSegmentAsync,
     setDueSoonCount,
   };
 }
 
 export function useAppTheme() {
-  const { isDark, theme, themePreference } = useSettings();
-  return { isDark, theme, themePreference };
+  return { isDark: true, theme: Colors.dark };
 }
