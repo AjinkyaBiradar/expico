@@ -376,7 +376,7 @@ export default function HomeScreen() {
               </View>
             </View>
             <Text style={[styles.splitCardLabel, { color: theme.textSecondary }]}>TOTAL INCOME</Text>
-            <Text style={[styles.splitCardValue, { color: '#4EDEA3' }]}>
+            <Text style={[styles.splitCardValue, { color: isDark ? '#4EDEA3' : '#059669' }]}>
               +{formatStatCurrency(totalIncome)}
             </Text>
           </View>
@@ -392,7 +392,7 @@ export default function HomeScreen() {
               </View>
             </View>
             <Text style={[styles.splitCardLabel, { color: theme.textSecondary }]}>TOTAL EXPENSES</Text>
-            <Text style={[styles.splitCardValue, { color: '#FFB2B7' }]}>
+            <Text style={[styles.splitCardValue, { color: isDark ? '#FFB2B7' : '#E11D48' }]}>
               -{formatStatCurrency(totalExpense)}
             </Text>
           </View>
